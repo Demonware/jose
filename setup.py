@@ -30,7 +30,7 @@ if __name__ == '__main__':
         pkg_name = '-'.join((pyver.replace('.', ''), pkg_name))
 
     setup(name=pkg_name,
-        version='0.1',
+        version='0.1.1',
         author='Demian Brecht',
         author_email='dbrecht@demonware.net',
         py_modules=['jose'],
