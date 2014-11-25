@@ -1,0 +1,12 @@
+CHANGES
+=======
+
+0.2.1 (2014-11-24)
+------------------
+- Unpinned pycrypto dependency
+- Added CLI exposing "decrypt" command
+- Added custom exceptions, making client error handling easier
+
+0.1 (2014-04-16)
+----------------
+- Initial release

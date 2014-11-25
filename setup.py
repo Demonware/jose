@@ -12,12 +12,21 @@ pyver = ''.join(('python', '.'.join(map(str, sys.version_info[:2]))))
 
 
 class bdist_rpm(_bdist_rpm):
+    op_map = {
+        '==': '=',
+    }
+
     def finalize_package_data(self):
         self.requires = []
-        for pkg, ver in map(lambda s: s.split('=='), REQUIRES):
+        for pkg, op, ver in map(lambda s: s.split(' '), REQUIRES):
             pkg = '-'.join((pyver.replace('.', ''), pkg))
-            self.requires.append(' = '.join((pkg, ver)))
-        
+            try:
+                mop = self.op_map[op]
+            except KeyError:
+                mop = op
+
+            self.requires.append(' {} '.format(mop).join((pkg, ver)))
+
         self.python = pyver
         if self.release is None:
             self.release = '.'.join((os.environ.get('JOSE_RELEASE', '1'),
@@ -30,7 +39,7 @@ if __name__ == '__main__':
         pkg_name = '-'.join((pyver.replace('.', ''), pkg_name))
 
     setup(name=pkg_name,
-        version='0.1',
+        version='0.2.1',
         author='Demian Brecht',
         author_email='dbrecht@demonware.net',
         py_modules=['jose'],
@@ -47,4 +56,9 @@ if __name__ == '__main__':
             'Topic :: Security',
             'Topic :: Software Development :: Libraries',],
         cmdclass={'bdist_rpm': bdist_rpm},
+        entry_points = {
+            'console_scripts': (
+                'jose = jose:_cli',
+            )
+        },
     )

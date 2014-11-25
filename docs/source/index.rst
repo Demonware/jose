@@ -81,9 +81,9 @@ Example
 ```````
 
 .. code-block:: python
-    
-    import jose 
-    
+
+    import jose
+
     claims = {
         'iss': 'http://www.example.com',
         'exp': int(time()) + 3600,
@@ -127,7 +127,7 @@ JWE
 
 
 .. code-block:: python
-    
+
     import jose
     from time import time
     from Crypto.PublicKey import RSA
@@ -168,7 +168,7 @@ JWE
 Algorithm support
 `````````````````
 
-.. note:: 
+.. note::
     There are two different encryption algorithms employed to fully encrypt a JWE:
     Encryption of the Content Encryption Key (CEK) and encryption of the JWT
     claims. The encryption algorithm used to encrypt the CEK is set through the
@@ -182,21 +182,21 @@ CEK Encryption (`alg`)
 ==========  ===================
 Symmetric   [None]
 ==========  ===================
-Asymmetric  RSA-OAEP 
+Asymmetric  RSA-OAEP
 ==========  ===================
 
 Claims Encryption (`enc`)
 *************************
 
 ==========  ===========================================
-Symmetric   A128CBC-HS256, A192CBC-HS256, A256CBC-HS512 
+Symmetric   A128CBC-HS256, A192CBC-HS256, A256CBC-HS512
 ==========  ===========================================
 Asymmetric  [N/A]
 ==========  ===========================================
 
 Serialization
 -------------
- 
+
 .. autofunction:: jose.serialize_compact
 .. autofunction:: jose.deserialize_compact
 
@@ -209,11 +209,19 @@ verifying a :class:`~jose.JWE` or a :class:`~jose.JWS`.
 .. autoclass:: jose.JWT
 
 
+Errors
+------
+
+.. autoexception:: jose.Error
+.. autoexception:: jose.Expired
+.. autoexception:: jose.NotYetValid
+
+
 References
 ==========
 
 .. [#f1] JOSE: JSON Object Signing and Encryption
-    
+
     https://datatracker.ietf.org/wg/jose/charter/
 
 .. [#f2] JWT: JSON Web Tokens

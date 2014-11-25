@@ -8,6 +8,7 @@ except ImportError:  # pragma: nocover
     from json import loads as json_decode, dumps as json_encode
 
 import zlib
+import datetime
 
 from base64 import urlsafe_b64encode, urlsafe_b64decode
 from collections import namedtuple
@@ -43,6 +44,33 @@ JWT = namedtuple('JWT',
         'claims ')
 
 
+CLAIM_ISSUER = 'iss'
+CLAIM_SUBJECT = 'sub'
+CLAIM_AUDIENCE = 'aud'
+CLAIM_EXPIRATION_TIME = 'exp'
+CLAIM_NOT_BEFORE = 'nbf'
+CLAIM_ISSUED_AT = 'iat'
+CLAIM_JWT_ID = 'jti'
+
+
+class Error(Exception):
+    """ The base error type raised by jose
+    """
+    pass
+
+
+class Expired(Error):
+    """ Raised during claims validation if a JWT has expired
+    """
+    pass
+
+
+class NotYetValid(Error):
+    """ Raised during claims validation is a JWT is not yet valid
+    """
+    pass
+
+
 def serialize_compact(jwt):
     """ Compact serialization of a :class:`~jose.JWE` or :class:`~jose.JWS`
 
@@ -58,6 +86,7 @@ def deserialize_compact(jwt):
 
     :param jwt: The serialized JWT to deserialize.
     :rtype: :class:`~jose.JWT`.
+    :raises: :class:`~jose.Error` if the JWT is malformed
     """
     parts = jwt.split('.')
 
@@ -68,7 +97,7 @@ def deserialize_compact(jwt):
     elif len(parts) == 5:
         token_type = JWE
     else:
-        raise ValueError('Malformed JWT')
+        raise Error('Malformed JWT')
 
     return token_type(*parts)
 
@@ -93,6 +122,7 @@ def encrypt(claims, jwk, adata='', add_header=None, alg='RSA-OAEP',
     :param compression: The compression algorithm to use. Currently supports
                 `'DEF'`.
     :rtype: :class:`~jose.JWE`
+    :raises: :class:`~jose.Error` if there is an error producing the JWE
     """
 
     header = dict((add_header or {}).items() + [
@@ -106,7 +136,7 @@ def encrypt(claims, jwk, adata='', add_header=None, alg='RSA-OAEP',
         try:
             (compress, _) = COMPRESSION[compression]
         except KeyError:
-            raise ValueError(
+            raise Error(
                 'Unsupported compression algorithm: {}'.format(compression))
         plaintext = compress(plaintext)
 
@@ -131,7 +161,7 @@ def encrypt(claims, jwk, adata='', add_header=None, alg='RSA-OAEP',
             auth_tag(hash))))
 
 
-def decrypt(jwe, jwk, adata=''):
+def decrypt(jwe, jwk, adata='', validate_claims=True, expiry_seconds=None):
     """ Decrypts a deserialized :class:`~jose.JWE`
 
     :param jwe: An instance of :class:`~jose.JWE`
@@ -139,7 +169,16 @@ def decrypt(jwe, jwk, adata=''):
                 of the :class:`~jose.JWE`.
     :param adata: Arbitrary string data used during encryption for additional
                   authentication.
+    :param validate_claims: A `bool` indicating whether or not the `exp`, `iat`
+                            and `nbf` claims should be validated. Defaults to
+                            `True`.
+    :param expiry_seconds: An `int` containing the JWT expiry in seconds, used
+                           when evaluating the `iat` claim. Defaults to `None`,
+                           which disables `iat` claim validation.
     :rtype: :class:`~jose.JWT`
+    :raises: :class:`~jose.Expired` if the JWT has expired
+    :raises: :class:`~jose.NotYetValid` if the JWT is not yet valid
+    :raises: :class:`~jose.Error` if there is an error decrypting the JWE
     """
     header, encryption_key_ciphertext, iv, ciphertext, tag = map(
         b64decode_url, jwe)
@@ -157,19 +196,19 @@ def decrypt(jwe, jwk, adata=''):
             encryption_key[-mod.digest_size:], mod=mod)
 
     if not const_compare(auth_tag(hash), tag):
-        raise ValueError('Mismatched authentication tags')
+        raise Error('Mismatched authentication tags')
 
     if 'zip' in header:
         try:
             (_, decompress) = COMPRESSION[header['zip']]
         except KeyError:
-            raise ValueError('Unsupported compression algorithm: {}'.format(
+            raise Error('Unsupported compression algorithm: {}'.format(
                 header['zip']))
 
         plaintext = decompress(plaintext)
 
     claims = json_decode(plaintext)
-    _validate(claims)
+    _validate(claims, validate_claims, expiry_seconds)
 
     return JWT(header, claims)
 
@@ -184,6 +223,7 @@ def sign(claims, jwk, add_header=None, alg='HS256'):
     :parameter add_header: Additional items to be added to the header.
                            Additional headers *will* be authenticated.
     :parameter alg: The algorithm to use to produce the signature.
+    :rtype: :class:`~jose.JWS`
     """
     (hash_fn, _), mod = JWA[alg]
 
@@ -196,12 +236,22 @@ def sign(claims, jwk, add_header=None, alg='HS256'):
     return JWS(header, payload, sig)
 
 
-def verify(jws, jwk):
+def verify(jws, jwk, validate_claims=True, expiry_seconds=None):
     """ Verifies the given :class:`~jose.JWS`
 
     :param jws: The :class:`~jose.JWS` to be verified.
     :param jwk: A `dict` representing the JWK to use for verification. This
                 parameter is algorithm-specific.
+    :param validate_claims: A `bool` indicating whether or not the `exp`, `iat`
+                            and `nbf` claims should be validated. Defaults to
+                            `True`.
+    :param expiry_seconds: An `int` containing the JWT expiry in seconds, used
+                           when evaluating the `iat` claim. Defaults to `None`,
+                           which disables `iat` claim validation.
+    :rtype: :class:`~jose.JWT`
+    :raises: :class:`~jose.Expired` if the JWT has expired
+    :raises: :class:`~jose.NotYetValid` if the JWT is not yet valid
+    :raises: :class:`~jose.Error` if there is an error decrypting the JWE
     """
     header, payload, sig = map(b64decode_url, jws)
     header = json_decode(header)
@@ -209,10 +259,10 @@ def verify(jws, jwk):
 
     if not verify_fn(_jws_hash_str(jws.header, jws.payload),
             jwk['k'], sig, mod=mod):
-        raise ValueError('Mismatched signatures')
+        raise Error('Mismatched signatures')
 
     claims = json_decode(b64decode_url(jws.payload))
-    _validate(claims)
+    _validate(claims, validate_claims, expiry_seconds)
 
     return JWT(header, claims)
 
@@ -222,7 +272,10 @@ def b64decode_url(istr):
         symbols. Compensate by padding to the nearest 4 bytes.
     """
     istr = encode_safe(istr)
-    return urlsafe_b64decode(istr + '=' * (4 - (len(istr) % 4)))
+    try:
+        return urlsafe_b64decode(istr + '=' * (4 - (len(istr) % 4)))
+    except TypeError as e:
+        raise Error('Unable to decode base64: %s' % (e))
 
 
 def b64encode_url(istr):
@@ -261,7 +314,10 @@ def encrypt_oaep(plaintext, jwk):
 
 
 def decrypt_oaep(ciphertext, jwk):
-    return PKCS1_OAEP.new(RSA.importKey(jwk['k'])).decrypt(ciphertext)
+    try:
+        return PKCS1_OAEP.new(RSA.importKey(jwk['k'])).decrypt(ciphertext)
+    except ValueError as e:
+        raise Error(e.args[0])
 
 
 def hmac_sign(s, key, mod=SHA256):
@@ -353,7 +409,7 @@ class _JWA(object):
         except ValueError:
             pass
 
-        raise KeyError('Unsupported algorithm: {}'.format(key))
+        raise Error('Unsupported algorithm: {}'.format(key))
 
 
 JWA = _JWA()
@@ -364,14 +420,75 @@ COMPRESSION = {
 }
 
 
-def _validate(claims):
+def _format_timestamp(ts):
+    dt = datetime.datetime.utcfromtimestamp(ts)
+    return dt.isoformat() + 'Z'
+
+
+def _check_expiration_time(now, expiration_time):
+    # Token is valid when nbf <= now < exp
+    if now >= expiration_time:
+        raise Expired('Token expired at {}'.format(
+            _format_timestamp(expiration_time))
+        )
+
+
+def _check_not_before(now, not_before):
+    # Token is valid when nbf <= now < exp
+    if not_before > now:
+        raise NotYetValid('Token not valid until {}'.format(
+            _format_timestamp(not_before))
+        )
+
+
+def _validate(claims, validate_claims, expiry_seconds):
+    """ Validate expiry related claims.
+
+    If validate_claims is False, do nothing.
+
+    Otherwise, validate the exp and nbf claims if they are present, and
+    validate the iat claim if expiry_seconds is provided.
+    """
+    if not validate_claims:
+        return
+
     now = time()
 
-    # TODO: allow for clock skew?
-    if claims.get('exp', now) < now:
-        raise ValueError('Token has expired')
-    elif claims.get('nbf', now) > now:
-        raise ValueError('Token is not valid yet')
+    # TODO: implement support for clock skew
+
+    # The exp (expiration time) claim identifies the expiration time on or
+    # after which the JWT MUST NOT be accepted for processing. The
+    # processing of the exp claim requires that the current date/time MUST
+    # be before the expiration date/time listed in the exp claim.
+    try:
+        expiration_time = claims[CLAIM_EXPIRATION_TIME]
+    except KeyError:
+        pass
+    else:
+        _check_expiration_time(now, expiration_time)
+
+    # The iat (issued at) claim identifies the time at which the JWT was
+    # issued. This claim can be used to determine the age of the JWT.
+    # If expiry_seconds is provided, and the iat claims is present,
+    # determine the age of the token and check if it has expired.
+    try:
+        issued_at = claims[CLAIM_ISSUED_AT]
+    except KeyError:
+        pass
+    else:
+        if expiry_seconds is not None:
+            _check_expiration_time(now, issued_at + expiry_seconds)
+
+    # The nbf (not before) claim identifies the time before which the JWT
+    # MUST NOT be accepted for processing. The processing of the nbf claim
+    # requires that the current date/time MUST be after or equal to the
+    # not-before date/time listed in the nbf claim.
+    try:
+        not_before = claims[CLAIM_NOT_BEFORE]
+    except KeyError:
+        pass
+    else:
+        _check_not_before(now, not_before)
 
 
 def _jwe_hash_str(plaintext, iv, adata=''):
@@ -382,3 +499,33 @@ def _jwe_hash_str(plaintext, iv, adata=''):
 
 def _jws_hash_str(header, claims):
     return '.'.join((header, claims))
+
+
+def cli_decrypt(jwt, key):
+    print decrypt(deserialize_compact(jwt), {'k':key},
+        validate_claims=False)
+
+
+def _cli():
+    import inspect
+    import sys
+
+    from argparse import ArgumentParser
+    from copy import copy
+
+    parser = ArgumentParser()
+    subparsers = parser.add_subparsers(dest='subparser_name')
+
+    commands = {
+        'decrypt': cli_decrypt,
+    }
+    for k, fn in commands.items():
+        p = subparsers.add_parser(k)
+        for arg in inspect.getargspec(fn).args:
+            p.add_argument(arg)
+
+    args = parser.parse_args()
+    handler = commands[args.subparser_name]
+    handler_args = [getattr(args, k) for k in inspect.getargspec(
+        handler).args]
+    handler(*handler_args)

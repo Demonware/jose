@@ -7,9 +7,8 @@ from itertools import product
 from time import time
 
 from Crypto.PublicKey import RSA
-from Crypto.Cipher import AES
 
-import jose 
+import jose
 
 rsa_key = RSA.generate(2048)
 
@@ -17,7 +16,7 @@ rsa_priv_key = {
     'k': rsa_key.exportKey('PEM'),
 }
 rsa_pub_key = {
-    'k': rsa_key.publickey().exportKey('PEM'), 
+    'k': rsa_key.publickey().exportKey('PEM'),
 }
 
 claims = {'john': 'cleese'}
@@ -25,12 +24,10 @@ claims = {'john': 'cleese'}
 
 class TestSerializeDeserialize(unittest.TestCase):
     def test_serialize(self):
-        invalid = '1.2.3.4'
-
         try:
             jose.deserialize_compact('1.2.3.4')
             self.fail()
-        except ValueError as e:
+        except jose.Error as e:
             self.assertEqual(e.message, 'Malformed JWT')
 
 
@@ -61,7 +58,7 @@ class TestJWE(unittest.TestCase):
             try:
                 jose.decrypt(jose.deserialize_compact(token), bad_key)
                 self.fail()
-            except ValueError as e:
+            except jose.Error as e:
                 self.assertEqual(e.message, 'Incorrect decryption.')
 
     def test_jwe_add_header(self):
@@ -87,30 +84,109 @@ class TestJWE(unittest.TestCase):
                 hdr, dt = jose.decrypt(jose.deserialize_compact(et),
                     rsa_priv_key)
                 self.fail()
-            except ValueError as e:
+            except jose.Error as e:
                 self.assertEqual(e.message, 'Mismatched authentication tags')
 
             self.assertEqual(jwt.claims, claims)
 
-    def test_jwe_invalid_dates_error(self):
-        claims = {'exp': time() - 5}
+    def test_jwe_invalid_base64(self):
+        claims = {jose.CLAIM_EXPIRATION_TIME: int(time()) - 5}
+        et = jose.serialize_compact(jose.encrypt(claims, rsa_pub_key))
+        bad = b'\x00' + et
+
+        try:
+            jose.decrypt(jose.deserialize_compact(bad), rsa_priv_key)
+            self.fail()  # expecting error due to invalid base64
+        except jose.Error as e:
+            pass
+
+        self.assertEquals(
+            e.args[0],
+            'Unable to decode base64: Incorrect padding'
+        )
+
+    def test_jwe_no_error_with_exp_claim(self):
+        claims = {jose.CLAIM_EXPIRATION_TIME: int(time()) + 5}
+        et = jose.serialize_compact(jose.encrypt(claims, rsa_pub_key))
+        jose.decrypt(jose.deserialize_compact(et), rsa_priv_key)
+
+    def test_jwe_expired_error_with_exp_claim(self):
+        claims = {jose.CLAIM_EXPIRATION_TIME: int(time()) - 5}
         et = jose.serialize_compact(jose.encrypt(claims, rsa_pub_key))
 
         try:
             jose.decrypt(jose.deserialize_compact(et), rsa_priv_key)
-            self.fail() # expecting expired token
-        except ValueError:
+            self.fail()  # expecting expired token
+        except jose.Expired as e:
             pass
 
+        self.assertEquals(
+            e.args[0],
+            'Token expired at {}'.format(
+                jose._format_timestamp(claims[jose.CLAIM_EXPIRATION_TIME])
+            )
+        )
 
-        claims = {'nbf': time() + 5}
+    def test_jwe_no_error_with_iat_claim(self):
+        claims = {jose.CLAIM_ISSUED_AT: int(time()) - 15}
+        et = jose.serialize_compact(jose.encrypt(claims, rsa_pub_key))
+
+        jose.decrypt(jose.deserialize_compact(et), rsa_priv_key,
+            expiry_seconds=20)
+
+    def test_jwe_expired_error_with_iat_claim(self):
+        expiry_seconds = 10
+        claims = {jose.CLAIM_ISSUED_AT: int(time()) - 15}
+        et = jose.serialize_compact(jose.encrypt(claims, rsa_pub_key))
+
+        try:
+            jose.decrypt(jose.deserialize_compact(et), rsa_priv_key,
+                expiry_seconds=expiry_seconds)
+            self.fail()  # expecting expired token
+        except jose.Expired as e:
+            pass
+
+        expiration_time = claims[jose.CLAIM_ISSUED_AT] + expiry_seconds
+        self.assertEquals(
+            e.args[0],
+            'Token expired at {}'.format(
+                jose._format_timestamp(expiration_time)
+            )
+        )
+
+    def test_jwe_no_error_with_nbf_claim(self):
+        claims = {jose.CLAIM_NOT_BEFORE: int(time()) - 5}
+        et = jose.serialize_compact(jose.encrypt(claims, rsa_pub_key))
+        jose.decrypt(jose.deserialize_compact(et), rsa_priv_key)
+
+    def test_jwe_not_yet_valid_error_with_nbf_claim(self):
+        claims = {jose.CLAIM_NOT_BEFORE: int(time()) + 5}
         et = jose.serialize_compact(jose.encrypt(claims, rsa_pub_key))
 
         try:
             jose.decrypt(jose.deserialize_compact(et), rsa_priv_key)
-            self.fail() # expecting not valid yet
-        except ValueError:
+            self.fail()  # expecting not valid yet
+        except jose.NotYetValid as e:
             pass
+
+        self.assertEquals(
+            e.args[0],
+            'Token not valid until {}'.format(
+                jose._format_timestamp(claims[jose.CLAIM_NOT_BEFORE])
+            )
+        )
+
+    def test_jwe_ignores_expired_token_if_validate_claims_is_false(self):
+        claims = {jose.CLAIM_EXPIRATION_TIME: int(time()) - 5}
+        et = jose.serialize_compact(jose.encrypt(claims, rsa_pub_key))
+        jose.decrypt(jose.deserialize_compact(et), rsa_priv_key,
+            validate_claims=False)
+
+    def test_format_timestamp(self):
+        self.assertEquals(
+            jose._format_timestamp(1403054056),
+            '2014-06-18T01:14:16Z'
+        )
 
     def test_jwe_compression(self):
         local_claims = copy(claims)
@@ -135,7 +211,7 @@ class TestJWE(unittest.TestCase):
         try:
             jose.encrypt(claims, rsa_pub_key, compression='BAD')
             self.fail()
-        except ValueError:
+        except jose.Error:
             pass
 
     def test_decrypt_invalid_compression_error(self):
@@ -146,7 +222,7 @@ class TestJWE(unittest.TestCase):
         try:
             jose.decrypt(jose.JWE(*((header,) + (jwe[1:]))), rsa_priv_key)
             self.fail()
-        except ValueError as e:
+        except jose.Error as e:
             self.assertEqual(e.message,
                     'Unsupported compression algorithm: BAD')
 
@@ -167,7 +243,8 @@ class TestJWS(unittest.TestCase):
         algs = ('RS256', 'RS384', 'RS512')
 
         for alg in algs:
-            st = jose.serialize_compact(jose.sign(claims, rsa_priv_key, alg=alg))
+            st = jose.serialize_compact(jose.sign(claims, rsa_priv_key,
+                alg=alg))
             jwt = jose.verify(jose.deserialize_compact(st), rsa_pub_key)
             self.assertEqual(jwt.claims, claims)
 
@@ -176,7 +253,7 @@ class TestJWS(unittest.TestCase):
         jws = jose.sign(claims, jwk)
         try:
             jose.verify(jose.JWS(jws.header, jws.payload, 'asd'), jwk)
-        except ValueError as e:
+        except jose.Error as e:
             self.assertEqual(e.message, 'Mismatched signatures')
 
 
@@ -219,7 +296,8 @@ class TestJWA(unittest.TestCase):
     def test_invalid_error(self):
         try:
             jose.JWA['bad']
-        except KeyError as e:
+            self.fail()
+        except jose.Error as e:
             self.assertTrue(e.message.startswith('Unsupported'))
 
 
