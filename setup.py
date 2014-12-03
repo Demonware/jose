@@ -61,4 +61,5 @@ if __name__ == '__main__':
                 'jose = jose:_cli',
             )
         },
+        test_suite='jose.tests.suite',
     )
