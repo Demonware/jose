@@ -152,6 +152,10 @@ def encrypt(claims, jwk, adata='', add_header=None, alg='RSA-OAEP',
     iv = rng(AES.block_size)
     encryption_key = rng((key_size // 8) + hash_mod.digest_size)
 
+    if not isinstance(adata, bytes):
+        # TODO this should probably just be an error
+        adata = adata.encode('utf-8')
+
     ciphertext = cipher(plaintext, encryption_key[:-hash_mod.digest_size], iv)
     hash = hash_fn(_jwe_hash_str(plaintext, iv, adata),
             encryption_key[-hash_mod.digest_size:], hash_mod)
