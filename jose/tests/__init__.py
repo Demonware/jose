@@ -59,7 +59,7 @@ class TestJWE(unittest.TestCase):
                 jose.decrypt(jose.deserialize_compact(token), bad_key)
                 self.fail()
             except jose.Error as e:
-                self.assertEqual(e.message, 'Incorrect decryption.')
+                self.assertEqual(str(e), 'Incorrect decryption.')
 
     def test_jwe_add_header(self):
         add_header = {'foo': 'bar'}
@@ -85,7 +85,7 @@ class TestJWE(unittest.TestCase):
                     rsa_priv_key)
                 self.fail()
             except jose.Error as e:
-                self.assertEqual(e.message, 'Mismatched authentication tags')
+                self.assertEqual(str(e), 'Mismatched authentication tags')
 
             self.assertEqual(jwt.claims, claims)
 
@@ -223,7 +223,7 @@ class TestJWE(unittest.TestCase):
             jose.decrypt(jose.JWE(*((header,) + (jwe[1:]))), rsa_priv_key)
             self.fail()
         except jose.Error as e:
-            self.assertEqual(e.message,
+            self.assertEqual(str(e),
                     'Unsupported compression algorithm: BAD')
 
 
@@ -254,7 +254,7 @@ class TestJWS(unittest.TestCase):
         try:
             jose.verify(jose.JWS(jws.header, jws.payload, 'asd'), jwk)
         except jose.Error as e:
-            self.assertEqual(e.message, 'Mismatched signatures')
+            self.assertEqual(str(e), 'Mismatched signatures')
 
 
 class TestUtils(unittest.TestCase):
@@ -298,7 +298,7 @@ class TestJWA(unittest.TestCase):
             jose.JWA['bad']
             self.fail()
         except jose.Error as e:
-            self.assertTrue(e.message.startswith('Unsupported'))
+            self.assertTrue(str(e).startswith('Unsupported'))
 
 
 loader = unittest.TestLoader()
