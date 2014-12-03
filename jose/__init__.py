@@ -294,6 +294,8 @@ def b64decode_url(istr):
     :param istr: A unicode string to decode
     :returns: The byte string represented by `istr`
     """
+    if not isinstance(istr, str):
+        raise ValueError("expected string")
     try:
         return urlsafe_b64decode(istr + '=' * (4 - (len(istr) % 4)))
     except TypeError as e:
@@ -308,6 +310,8 @@ def b64encode_url(istr):
     :returns: The base64 representation of the input byte string as a regular
         `str` object
     """
+    if not isinstance(istr, bytes):
+        raise Exception("expected bytestring")
     return urlsafe_b64encode(istr).rstrip(b'=')
 
 
