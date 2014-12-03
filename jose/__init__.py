@@ -309,7 +309,8 @@ def auth_tag(hmac):
 
 def pad_pkcs7(s):
     sz = AES.block_size - (len(s) % AES.block_size)
-    return s + (chr(sz) * sz)
+    # TODO would be cleaner to do `bytes(sz) * sz` but py2 behaves strangely
+    return s + (chr(sz) * sz).encode('ascii')
 
 
 def unpad_pkcs7(s):
