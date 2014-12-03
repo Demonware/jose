@@ -5,8 +5,9 @@ from setuptools import setup
 from setuptools.command.bdist_rpm import bdist_rpm as _bdist_rpm
 
 here = os.path.abspath(os.path.dirname(__file__))
-REQUIRES = filter(lambda s: len(s) > 0,
-        open(os.path.join(here, 'requirements.txt')).read().split('\n'))
+REQUIRES = [
+    'pycrypto >= 2.6',
+]
 pkg_name = 'jose'
 pyver = ''.join(('python', '.'.join(map(str, sys.version_info[:2]))))
 
