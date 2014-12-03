@@ -307,7 +307,7 @@ def b64encode_url(istr):
     :returns: The base64 representation of the input byte string as a regular
         `str` object
     """
-    return urlsafe_b64encode(encode_safe(istr)).rstrip(b'=')
+    return urlsafe_b64encode(istr).rstrip(b'=')
 
 
 def encode_safe(istr, encoding='utf8'):
