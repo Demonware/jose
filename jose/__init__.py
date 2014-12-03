@@ -289,6 +289,9 @@ def verify(jws, jwk, validate_claims=True, expiry_seconds=None):
 def b64decode_url(istr):
     """ JWT Tokens may be truncated without the usual trailing padding '='
         symbols. Compensate by padding to the nearest 4 bytes.
+
+    :param istr: A unicode string to decode
+    :returns: The byte string represented by `istr`
     """
     istr = encode_safe(istr)
     try:
@@ -300,8 +303,12 @@ def b64decode_url(istr):
 def b64encode_url(istr):
     """ JWT Tokens may be truncated without the usual trailing padding '='
         symbols. Compensate by padding to the nearest 4 bytes.
+
+    :param istr: a byte string to encode
+    :returns: The base64 representation of the input byte string as a regular
+        `str` object
     """
-    return urlsafe_b64encode(encode_safe(istr)).rstrip('=')
+    return urlsafe_b64encode(encode_safe(istr)).rstrip(b'=')
 
 
 def encode_safe(istr, encoding='utf8'):
