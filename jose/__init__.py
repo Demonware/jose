@@ -293,7 +293,6 @@ def b64decode_url(istr):
     :param istr: A unicode string to decode
     :returns: The byte string represented by `istr`
     """
-    istr = encode_safe(istr)
     try:
         return urlsafe_b64decode(istr + '=' * (4 - (len(istr) % 4)))
     except TypeError as e:
