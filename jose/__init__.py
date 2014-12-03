@@ -125,8 +125,15 @@ def encrypt(claims, jwk, adata='', add_header=None, alg='RSA-OAEP',
     :raises: :class:`~jose.Error` if there is an error producing the JWE
     """
 
-    header = dict((add_header or {}).items() + [
-        ('enc', enc), ('alg', alg)])
+    header = {}
+
+    if add_header:
+        header.update(add_header)
+
+    header.update({
+        'enc': enc,
+        'alg': alg,
+    })
 
     plaintext = json_encode(claims)
 
