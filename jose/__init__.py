@@ -135,7 +135,7 @@ def encrypt(claims, jwk, adata='', add_header=None, alg='RSA-OAEP',
         'alg': alg,
     })
 
-    plaintext = json_encode(claims)
+    plaintext = json_encode(claims).encode('utf-8')
 
     # compress (if required)
     if compression is not None:
