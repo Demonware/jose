@@ -164,12 +164,12 @@ def encrypt(claims, jwk, adata='', add_header=None, alg='RSA-OAEP',
     (cipher, _), _ = JWA[alg]
     encryption_key_ciphertext = cipher(encryption_key, jwk)
 
-    return JWE(*map(b64encode_url,
+    return JWE(*list(map(b64encode_url,
             (json_encode(header),
             encryption_key_ciphertext,
             iv,
             ciphertext,
-            auth_tag(hash))))
+            auth_tag(hash)))))
 
 
 def decrypt(jwe, jwk, adata='', validate_claims=True, expiry_seconds=None):
