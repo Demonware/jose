@@ -28,7 +28,7 @@ class TestSerializeDeserialize(unittest.TestCase):
             jose.deserialize_compact('1.2.3.4')
             self.fail()
         except jose.Error as e:
-            self.assertEqual(e.message, 'Malformed JWT')
+            self.assertEqual(str(e), 'Malformed JWT')
 
 
 class TestJWE(unittest.TestCase):
