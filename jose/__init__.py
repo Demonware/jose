@@ -238,7 +238,15 @@ def sign(claims, jwk, add_header=None, alg='HS256'):
     """
     (hash_fn, _), mod = JWA[alg]
 
-    header = dict((add_header or {}).items() + [('alg', alg)])
+    header = {}
+
+    if add_header:
+        header.update(add_header)
+
+    header.update({
+        'alg': alg,
+    })
+
     header, payload = map(b64encode_url, map(json_encode, (header, claims)))
 
     sig = b64encode_url(hash_fn(_jws_hash_str(header, payload), jwk['k'],
