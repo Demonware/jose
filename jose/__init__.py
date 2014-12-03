@@ -499,14 +499,14 @@ def _validate(claims, validate_claims, expiry_seconds):
         _check_not_before(now, not_before)
 
 
-def _jwe_hash_str(plaintext, iv, adata=''):
+def _jwe_hash_str(plaintext, iv, adata=b''):
     # http://tools.ietf.org/html/
     # draft-ietf-jose-json-web-algorithms-24#section-5.2.2.1
-    return '.'.join((adata, iv, plaintext, str(len(adata))))
+    return b'.'.join((adata, iv, plaintext, bytes(len(adata))))
 
 
 def _jws_hash_str(header, claims):
-    return '.'.join((header, claims))
+    return b'.'.join((header, claims))
 
 
 def cli_decrypt(jwt, key):
