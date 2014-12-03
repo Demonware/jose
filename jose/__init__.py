@@ -310,15 +310,6 @@ def b64encode_url(istr):
     return urlsafe_b64encode(istr).rstrip(b'=')
 
 
-def encode_safe(istr, encoding='utf8'):
-    try:
-        return istr.encode(encoding)
-    except UnicodeDecodeError:
-        # this will fail if istr is already encoded
-        pass
-    return istr
-
-
 def auth_tag(hmac):
     # http://tools.ietf.org/html/
     # draft-ietf-oauth-json-web-token-19#section-4.1.4
