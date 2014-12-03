@@ -301,5 +301,11 @@ class TestJWA(unittest.TestCase):
             self.assertTrue(e.message.startswith('Unsupported'))
 
 
-if __name__ == '__main__':
-    unittest.main()
+loader = unittest.TestLoader()
+suite = unittest.TestSuite((
+    loader.loadTestsFromTestCase(TestSerializeDeserialize),
+    loader.loadTestsFromTestCase(TestJWE),
+    loader.loadTestsFromTestCase(TestJWS),
+    loader.loadTestsFromTestCase(TestUtils),
+    loader.loadTestsFromTestCase(TestJWA),
+))
