@@ -312,7 +312,7 @@ def b64encode_url(istr):
     """
     if not isinstance(istr, bytes):
         raise Exception("expected bytestring")
-    return urlsafe_b64encode(istr).rstrip(b'=')
+    return urlsafe_b64encode(istr).rstrip(b'=').decode('ascii')
 
 
 def auth_tag(hmac):
