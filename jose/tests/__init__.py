@@ -43,7 +43,7 @@ class TestJWE(unittest.TestCase):
 
             # make sure the body can't be loaded as json (should be encrypted)
             try:
-                json.loads(jose.b64decode_url(jwe.ciphertext))
+                json.loads(jose.b64decode_url(jwe.ciphertext).decode('utf-8'))
                 self.fail()
             except ValueError:
                 pass
