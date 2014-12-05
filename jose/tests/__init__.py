@@ -92,7 +92,7 @@ class TestJWE(unittest.TestCase):
     def test_jwe_invalid_base64(self):
         claims = {jose.CLAIM_EXPIRATION_TIME: int(time()) - 5}
         et = jose.serialize_compact(jose.encrypt(claims, rsa_pub_key))
-        bad = b'\x00' + et
+        bad = '\x00' + et
 
         try:
             jose.decrypt(jose.deserialize_compact(bad), rsa_priv_key)
