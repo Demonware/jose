@@ -390,14 +390,18 @@ def decrypt_aescbc(ciphertext, key, iv):
 
 
 def const_compare(stra, strb):
-    # TODO TODO TODO
-    return stra == strb
     if len(stra) != len(strb):
         return False
 
+    try:
+        # python 2 compatibility
+        orda, ordb = list(map(ord, stra)), list(map(ord, strb))
+    except TypeError:
+        orda, ordb = stra, strb
+
     res = 0
-    for a, b in zip(stra, strb):
-        res |= ord(a) ^ ord(b)
+    for a, b in zip(orda, ordb):
+        res |= a ^ b
     return res == 0
 
 
