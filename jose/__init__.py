@@ -280,14 +280,14 @@ def verify(jws, jwk, validate_claims=True, expiry_seconds=None):
     :raises: :class:`~jose.Error` if there is an error decrypting the JWE
     """
     header, payload, sig = map(b64decode_url, jws)
-    header = json_decode(header)
+    header = json_decode(header.decode('utf-8'))
     (_, verify_fn), mod = JWA[header['alg']]
 
     if not verify_fn(_jws_hash_str(jws.header, jws.payload),
             jwk['k'], sig, mod=mod):
         raise Error('Mismatched signatures')
 
-    claims = json_decode(b64decode_url(jws.payload))
+    claims = json_decode(b64decode_url(jws.payload).decode('utf-8'))
     _validate(claims, validate_claims, expiry_seconds)
 
     return JWT(header, claims)
