@@ -96,14 +96,13 @@ class TestJWE(unittest.TestCase):
 
         try:
             jose.decrypt(jose.deserialize_compact(bad), rsa_priv_key)
-            self.fail()  # expecting error due to invalid base64
         except jose.Error as e:
-            pass
-
-        self.assertEquals(
-            e.args[0],
-            'Unable to decode base64: Incorrect padding'
-        )
+            self.assertEquals(
+                e.args[0],
+                'Unable to decode base64: Incorrect padding'
+            )
+        else:
+            self.fail()  # expecting error due to invalid base64
 
     def test_jwe_no_error_with_exp_claim(self):
         claims = {jose.CLAIM_EXPIRATION_TIME: int(time()) + 5}
@@ -116,16 +115,15 @@ class TestJWE(unittest.TestCase):
 
         try:
             jose.decrypt(jose.deserialize_compact(et), rsa_priv_key)
-            self.fail()  # expecting expired token
         except jose.Expired as e:
-            pass
-
-        self.assertEquals(
-            e.args[0],
-            'Token expired at {}'.format(
-                jose._format_timestamp(claims[jose.CLAIM_EXPIRATION_TIME])
+            self.assertEquals(
+                e.args[0],
+                'Token expired at {}'.format(
+                    jose._format_timestamp(claims[jose.CLAIM_EXPIRATION_TIME])
+                )
             )
-        )
+        else:
+            self.fail()  # expecting expired token
 
     def test_jwe_no_error_with_iat_claim(self):
         claims = {jose.CLAIM_ISSUED_AT: int(time()) - 15}
@@ -142,17 +140,16 @@ class TestJWE(unittest.TestCase):
         try:
             jose.decrypt(jose.deserialize_compact(et), rsa_priv_key,
                 expiry_seconds=expiry_seconds)
-            self.fail()  # expecting expired token
         except jose.Expired as e:
-            pass
-
-        expiration_time = claims[jose.CLAIM_ISSUED_AT] + expiry_seconds
-        self.assertEquals(
-            e.args[0],
-            'Token expired at {}'.format(
-                jose._format_timestamp(expiration_time)
+            expiration_time = claims[jose.CLAIM_ISSUED_AT] + expiry_seconds
+            self.assertEquals(
+                e.args[0],
+                'Token expired at {}'.format(
+                    jose._format_timestamp(expiration_time)
+                )
             )
-        )
+        else:
+            self.fail()  # expecting expired token
 
     def test_jwe_no_error_with_nbf_claim(self):
         claims = {jose.CLAIM_NOT_BEFORE: int(time()) - 5}
@@ -165,16 +162,15 @@ class TestJWE(unittest.TestCase):
 
         try:
             jose.decrypt(jose.deserialize_compact(et), rsa_priv_key)
-            self.fail()  # expecting not valid yet
         except jose.NotYetValid as e:
-            pass
-
-        self.assertEquals(
-            e.args[0],
-            'Token not valid until {}'.format(
-                jose._format_timestamp(claims[jose.CLAIM_NOT_BEFORE])
+            self.assertEquals(
+                e.args[0],
+                'Token not valid until {}'.format(
+                    jose._format_timestamp(claims[jose.CLAIM_NOT_BEFORE])
+                )
             )
-        )
+        else:
+            self.fail()  # expecting not valid yet
 
     def test_jwe_ignores_expired_token_if_validate_claims_is_false(self):
         claims = {jose.CLAIM_EXPIRATION_TIME: int(time()) - 5}
@@ -210,9 +206,10 @@ class TestJWE(unittest.TestCase):
     def test_encrypt_invalid_compression_error(self):
         try:
             jose.encrypt(claims, rsa_pub_key, compression='BAD')
-            self.fail()
         except jose.Error:
             pass
+        else:
+            self.fail()
 
     def test_decrypt_invalid_compression_error(self):
         jwe = jose.encrypt(claims, rsa_pub_key, compression='DEF')
@@ -221,10 +218,11 @@ class TestJWE(unittest.TestCase):
 
         try:
             jose.decrypt(jose.JWE(*((header,) + (jwe[1:]))), rsa_priv_key)
-            self.fail()
         except jose.Error as e:
             self.assertEqual(str(e),
                     'Unsupported compression algorithm: BAD')
+        else:
+            self.fail()
 
 
 class TestJWS(unittest.TestCase):
