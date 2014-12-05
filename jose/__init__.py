@@ -532,7 +532,7 @@ def _jwe_hash_str(plaintext, iv, adata=b''):
 
 
 def _jws_hash_str(header, claims):
-    return b'.'.join((header, claims))
+    return b'.'.join((header.encode('ascii'), claims.encode('ascii')))
 
 
 def cli_decrypt(jwt, key):
