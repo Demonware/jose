@@ -253,7 +253,8 @@ def sign(claims, jwk, add_header=None, alg='HS256'):
         'alg': alg,
     })
 
-    header, payload = map(b64encode_url, map(json_encode, (header, claims)))
+    header = b64encode_url(json_encode(header).encode('utf-8'))
+    payload = b64encode_url(json_encode(claims).encode('utf-8'))
 
     sig = b64encode_url(hash_fn(_jws_hash_str(header, payload), jwk['k'],
         mod=mod))
