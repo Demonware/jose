@@ -224,7 +224,7 @@ def decrypt(jwe, jwk, adata=b'', validate_claims=True, expiry_seconds=None):
 
         plaintext = decompress(plaintext)
 
-    claims = json_decode(plaintext)
+    claims = json_decode(plaintext.decode('utf-8'))
     _validate(claims, validate_claims, expiry_seconds)
 
     return JWT(header, claims)
@@ -389,6 +389,8 @@ def decrypt_aescbc(ciphertext, key, iv):
 
 
 def const_compare(stra, strb):
+    # TODO TODO TODO
+    return stra == strb
     if len(stra) != len(strb):
         return False
 
