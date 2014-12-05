@@ -332,7 +332,11 @@ def pad_pkcs7(s):
 
 
 def unpad_pkcs7(s):
-    return s[:-ord(s[-1])]
+    try:
+        return s[:-ord(s[-1])]
+    # Python 3 compatibility
+    except TypeError:
+        return s[:-s[-1]]
 
 
 def encrypt_oaep(plaintext, jwk):
