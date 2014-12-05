@@ -194,7 +194,8 @@ def decrypt(jwe, jwk, adata=b'', validate_claims=True, expiry_seconds=None):
     """
     header, encryption_key_ciphertext, iv, ciphertext, tag = map(
         b64decode_url, jwe)
-    header = json_decode(header)
+    header = json_decode(header.decode('utf-8'))
+
 
     # decrypt cek
     (_, decipher), _ = JWA[header['alg']]
