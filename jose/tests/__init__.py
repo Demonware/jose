@@ -191,7 +191,7 @@ class TestJWE(unittest.TestCase):
     def test_jwe_compression(self):
         local_claims = copy(claims)
 
-        for v in xrange(1000):
+        for v in range(1000):
             local_claims['dummy_' + str(v)] = '0' * 100
 
         jwe = jose.serialize_compact(jose.encrypt(local_claims, rsa_pub_key))
