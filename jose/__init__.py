@@ -173,7 +173,7 @@ def encrypt(claims, jwk, adata='', add_header=None, alg='RSA-OAEP',
 
 
 
-def decrypt(jwe, jwk, adata='', validate_claims=True, expiry_seconds=None):
+def decrypt(jwe, jwk, adata=b'', validate_claims=True, expiry_seconds=None):
     """ Decrypts a deserialized :class:`~jose.JWE`
 
     :param jwe: An instance of :class:`~jose.JWE`
@@ -202,6 +202,10 @@ def decrypt(jwe, jwk, adata='', validate_claims=True, expiry_seconds=None):
 
     # decrypt body
     ((_, decipher), _), ((hash_fn, _), mod) = JWA[header['enc']]
+
+    if not isinstance(adata, bytes):
+        # TODO this should probably just be an error
+        adata = adata.encode('utf-8')
 
     plaintext = decipher(ciphertext, encryption_key[:-mod.digest_size], iv)
     hash = hash_fn(_jwe_hash_str(plaintext, iv, adata),
