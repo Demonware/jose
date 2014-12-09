@@ -11,6 +11,7 @@ import zlib
 import datetime
 
 from base64 import urlsafe_b64encode, urlsafe_b64decode
+import binascii
 from collections import namedtuple
 from time import time
 
@@ -317,7 +318,7 @@ def b64decode_url(istr):
 
     try:
         return urlsafe_b64decode(istr + '=' * (4 - (len(istr) % 4)))
-    except TypeError as e:
+    except (TypeError, binascii.Error) as e:
         raise Error('Unable to decode base64: %s' % (e))
 
 
