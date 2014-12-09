@@ -21,6 +21,13 @@ from Crypto.Random import get_random_bytes
 from Crypto.Signature import PKCS1_v1_5 as PKCS1_v1_5_SIG
 
 
+try:
+    # python 2 compatibility
+    unicode
+except NameError:
+    unicode = str
+
+
 __all__ = ['encrypt', 'decrypt', 'sign', 'verify']
 
 
@@ -300,8 +307,14 @@ def b64decode_url(istr):
     :param istr: A unicode string to decode
     :returns: The byte string represented by `istr`
     """
-    if not isinstance(istr, str):
-        raise ValueError("expected string")
+    # unicode check for python 2 compatibility
+    if not isinstance(istr, (str, unicode)):
+        raise ValueError("expected string, got %r" % type(istr))
+
+    # required for python 2 as urlsafe_b64decode does not like unicode objects
+    # safe as b64 encoded string should be only ascii anyway
+    istr = str(istr)
+
     try:
         return urlsafe_b64decode(istr + '=' * (4 - (len(istr) % 4)))
     except TypeError as e:
