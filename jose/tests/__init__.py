@@ -262,18 +262,18 @@ class TestUtils(unittest.TestCase):
         self.assertEqual(jose.b64decode_url(encoded), istr)
 
     def test_b64encode_url_ascii(self):
-        istr = 'eric idle'
+        istr = b'eric idle'
         encoded = jose.b64encode_url(istr)
         self.assertEqual(jose.b64decode_url(encoded), istr)
 
     def test_b64encode_url(self):
-        istr = '{"alg": "RSA-OAEP", "enc": "A128CBC-HS256"}'
+        istr = b'{"alg": "RSA-OAEP", "enc": "A128CBC-HS256"}'
 
         # sanity check
-        self.assertEqual(b64encode(istr)[-1], '=')
+        self.assertTrue(b64encode(istr).endswith(b'='))
 
         # actual test
-        self.assertNotEqual(jose.b64encode_url(istr), '=')
+        self.assertFalse(jose.b64encode_url(istr).endswith('='))
 
 
 class TestJWA(unittest.TestCase):
