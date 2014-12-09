@@ -97,7 +97,7 @@ class TestJWE(unittest.TestCase):
         try:
             jose.decrypt(jose.deserialize_compact(bad), rsa_priv_key)
         except jose.Error as e:
-            self.assertEquals(
+            self.assertEqual(
                 e.args[0],
                 'Unable to decode base64: Incorrect padding'
             )
@@ -116,7 +116,7 @@ class TestJWE(unittest.TestCase):
         try:
             jose.decrypt(jose.deserialize_compact(et), rsa_priv_key)
         except jose.Expired as e:
-            self.assertEquals(
+            self.assertEqual(
                 e.args[0],
                 'Token expired at {}'.format(
                     jose._format_timestamp(claims[jose.CLAIM_EXPIRATION_TIME])
@@ -142,7 +142,7 @@ class TestJWE(unittest.TestCase):
                 expiry_seconds=expiry_seconds)
         except jose.Expired as e:
             expiration_time = claims[jose.CLAIM_ISSUED_AT] + expiry_seconds
-            self.assertEquals(
+            self.assertEqual(
                 e.args[0],
                 'Token expired at {}'.format(
                     jose._format_timestamp(expiration_time)
@@ -163,7 +163,7 @@ class TestJWE(unittest.TestCase):
         try:
             jose.decrypt(jose.deserialize_compact(et), rsa_priv_key)
         except jose.NotYetValid as e:
-            self.assertEquals(
+            self.assertEqual(
                 e.args[0],
                 'Token not valid until {}'.format(
                     jose._format_timestamp(claims[jose.CLAIM_NOT_BEFORE])
@@ -179,7 +179,7 @@ class TestJWE(unittest.TestCase):
             validate_claims=False)
 
     def test_format_timestamp(self):
-        self.assertEquals(
+        self.assertEqual(
             jose._format_timestamp(1403054056),
             '2014-06-18T01:14:16Z'
         )
