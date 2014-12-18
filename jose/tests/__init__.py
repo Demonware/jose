@@ -28,7 +28,7 @@ class TestSerializeDeserialize(unittest.TestCase):
             jose.deserialize_compact('1.2.3.4')
             self.fail()
         except jose.Error as e:
-            self.assertEqual(e.message, 'Malformed JWT')
+            self.assertEqual(str(e), 'Malformed JWT')
 
 
 class TestJWE(unittest.TestCase):
@@ -43,7 +43,7 @@ class TestJWE(unittest.TestCase):
 
             # make sure the body can't be loaded as json (should be encrypted)
             try:
-                json.loads(jose.b64decode_url(jwe.ciphertext))
+                json.loads(jose.b64decode_url(jwe.ciphertext).decode('utf-8'))
                 self.fail()
             except ValueError:
                 pass
@@ -59,7 +59,7 @@ class TestJWE(unittest.TestCase):
                 jose.decrypt(jose.deserialize_compact(token), bad_key)
                 self.fail()
             except jose.Error as e:
-                self.assertEqual(e.message, 'Incorrect decryption.')
+                self.assertEqual(str(e), 'Incorrect decryption.')
 
     def test_jwe_add_header(self):
         add_header = {'foo': 'bar'}
@@ -85,25 +85,24 @@ class TestJWE(unittest.TestCase):
                     rsa_priv_key)
                 self.fail()
             except jose.Error as e:
-                self.assertEqual(e.message, 'Mismatched authentication tags')
+                self.assertEqual(str(e), 'Mismatched authentication tags')
 
             self.assertEqual(jwt.claims, claims)
 
     def test_jwe_invalid_base64(self):
         claims = {jose.CLAIM_EXPIRATION_TIME: int(time()) - 5}
         et = jose.serialize_compact(jose.encrypt(claims, rsa_pub_key))
-        bad = b'\x00' + et
+        bad = '\x00' + et
 
         try:
             jose.decrypt(jose.deserialize_compact(bad), rsa_priv_key)
-            self.fail()  # expecting error due to invalid base64
         except jose.Error as e:
-            pass
-
-        self.assertEquals(
-            e.args[0],
-            'Unable to decode base64: Incorrect padding'
-        )
+            self.assertEqual(
+                e.args[0],
+                'Unable to decode base64: Incorrect padding'
+            )
+        else:
+            self.fail()  # expecting error due to invalid base64
 
     def test_jwe_no_error_with_exp_claim(self):
         claims = {jose.CLAIM_EXPIRATION_TIME: int(time()) + 5}
@@ -116,16 +115,15 @@ class TestJWE(unittest.TestCase):
 
         try:
             jose.decrypt(jose.deserialize_compact(et), rsa_priv_key)
-            self.fail()  # expecting expired token
         except jose.Expired as e:
-            pass
-
-        self.assertEquals(
-            e.args[0],
-            'Token expired at {}'.format(
-                jose._format_timestamp(claims[jose.CLAIM_EXPIRATION_TIME])
+            self.assertEqual(
+                e.args[0],
+                'Token expired at {}'.format(
+                    jose._format_timestamp(claims[jose.CLAIM_EXPIRATION_TIME])
+                )
             )
-        )
+        else:
+            self.fail()  # expecting expired token
 
     def test_jwe_no_error_with_iat_claim(self):
         claims = {jose.CLAIM_ISSUED_AT: int(time()) - 15}
@@ -142,17 +140,16 @@ class TestJWE(unittest.TestCase):
         try:
             jose.decrypt(jose.deserialize_compact(et), rsa_priv_key,
                 expiry_seconds=expiry_seconds)
-            self.fail()  # expecting expired token
         except jose.Expired as e:
-            pass
-
-        expiration_time = claims[jose.CLAIM_ISSUED_AT] + expiry_seconds
-        self.assertEquals(
-            e.args[0],
-            'Token expired at {}'.format(
-                jose._format_timestamp(expiration_time)
+            expiration_time = claims[jose.CLAIM_ISSUED_AT] + expiry_seconds
+            self.assertEqual(
+                e.args[0],
+                'Token expired at {}'.format(
+                    jose._format_timestamp(expiration_time)
+                )
             )
-        )
+        else:
+            self.fail()  # expecting expired token
 
     def test_jwe_no_error_with_nbf_claim(self):
         claims = {jose.CLAIM_NOT_BEFORE: int(time()) - 5}
@@ -165,16 +162,15 @@ class TestJWE(unittest.TestCase):
 
         try:
             jose.decrypt(jose.deserialize_compact(et), rsa_priv_key)
-            self.fail()  # expecting not valid yet
         except jose.NotYetValid as e:
-            pass
-
-        self.assertEquals(
-            e.args[0],
-            'Token not valid until {}'.format(
-                jose._format_timestamp(claims[jose.CLAIM_NOT_BEFORE])
+            self.assertEqual(
+                e.args[0],
+                'Token not valid until {}'.format(
+                    jose._format_timestamp(claims[jose.CLAIM_NOT_BEFORE])
+                )
             )
-        )
+        else:
+            self.fail()  # expecting not valid yet
 
     def test_jwe_ignores_expired_token_if_validate_claims_is_false(self):
         claims = {jose.CLAIM_EXPIRATION_TIME: int(time()) - 5}
@@ -183,7 +179,7 @@ class TestJWE(unittest.TestCase):
             validate_claims=False)
 
     def test_format_timestamp(self):
-        self.assertEquals(
+        self.assertEqual(
             jose._format_timestamp(1403054056),
             '2014-06-18T01:14:16Z'
         )
@@ -191,7 +187,7 @@ class TestJWE(unittest.TestCase):
     def test_jwe_compression(self):
         local_claims = copy(claims)
 
-        for v in xrange(1000):
+        for v in range(1000):
             local_claims['dummy_' + str(v)] = '0' * 100
 
         jwe = jose.serialize_compact(jose.encrypt(local_claims, rsa_pub_key))
@@ -210,21 +206,23 @@ class TestJWE(unittest.TestCase):
     def test_encrypt_invalid_compression_error(self):
         try:
             jose.encrypt(claims, rsa_pub_key, compression='BAD')
-            self.fail()
         except jose.Error:
             pass
+        else:
+            self.fail()
 
     def test_decrypt_invalid_compression_error(self):
         jwe = jose.encrypt(claims, rsa_pub_key, compression='DEF')
-        header = jose.b64encode_url('{"alg": "RSA-OAEP", '
-            '"enc": "A128CBC-HS256", "zip": "BAD"}')
+        header = jose.b64encode_url(b'{"alg": "RSA-OAEP", '
+            b'"enc": "A128CBC-HS256", "zip": "BAD"}')
 
         try:
             jose.decrypt(jose.JWE(*((header,) + (jwe[1:]))), rsa_priv_key)
-            self.fail()
         except jose.Error as e:
-            self.assertEqual(e.message,
+            self.assertEqual(str(e),
                     'Unsupported compression algorithm: BAD')
+        else:
+            self.fail()
 
 
 class TestJWS(unittest.TestCase):
@@ -254,7 +252,7 @@ class TestJWS(unittest.TestCase):
         try:
             jose.verify(jose.JWS(jws.header, jws.payload, 'asd'), jwk)
         except jose.Error as e:
-            self.assertEqual(e.message, 'Mismatched signatures')
+            self.assertEqual(str(e), 'Mismatched signatures')
 
 
 class TestUtils(unittest.TestCase):
@@ -264,18 +262,18 @@ class TestUtils(unittest.TestCase):
         self.assertEqual(jose.b64decode_url(encoded), istr)
 
     def test_b64encode_url_ascii(self):
-        istr = 'eric idle'
+        istr = b'eric idle'
         encoded = jose.b64encode_url(istr)
         self.assertEqual(jose.b64decode_url(encoded), istr)
 
     def test_b64encode_url(self):
-        istr = '{"alg": "RSA-OAEP", "enc": "A128CBC-HS256"}'
+        istr = b'{"alg": "RSA-OAEP", "enc": "A128CBC-HS256"}'
 
         # sanity check
-        self.assertEqual(b64encode(istr)[-1], '=')
+        self.assertTrue(b64encode(istr).endswith(b'='))
 
         # actual test
-        self.assertNotEqual(jose.b64encode_url(istr), '=')
+        self.assertFalse(jose.b64encode_url(istr).endswith('='))
 
 
 class TestJWA(unittest.TestCase):
@@ -298,8 +296,14 @@ class TestJWA(unittest.TestCase):
             jose.JWA['bad']
             self.fail()
         except jose.Error as e:
-            self.assertTrue(e.message.startswith('Unsupported'))
+            self.assertTrue(str(e).startswith('Unsupported'))
 
 
-if __name__ == '__main__':
-    unittest.main()
+loader = unittest.TestLoader()
+suite = unittest.TestSuite((
+    loader.loadTestsFromTestCase(TestSerializeDeserialize),
+    loader.loadTestsFromTestCase(TestJWE),
+    loader.loadTestsFromTestCase(TestJWS),
+    loader.loadTestsFromTestCase(TestUtils),
+    loader.loadTestsFromTestCase(TestJWA),
+))

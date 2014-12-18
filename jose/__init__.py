@@ -11,6 +11,7 @@ import zlib
 import datetime
 
 from base64 import urlsafe_b64encode, urlsafe_b64decode
+import binascii
 from collections import namedtuple
 from time import time
 
@@ -19,6 +20,13 @@ from Crypto.Cipher import PKCS1_OAEP, AES
 from Crypto.PublicKey import RSA
 from Crypto.Random import get_random_bytes
 from Crypto.Signature import PKCS1_v1_5 as PKCS1_v1_5_SIG
+
+
+try:
+    # python 2 compatibility
+    unicode
+except NameError:
+    unicode = str
 
 
 __all__ = ['encrypt', 'decrypt', 'sign', 'verify']
@@ -125,10 +133,17 @@ def encrypt(claims, jwk, adata='', add_header=None, alg='RSA-OAEP',
     :raises: :class:`~jose.Error` if there is an error producing the JWE
     """
 
-    header = dict((add_header or {}).items() + [
-        ('enc', enc), ('alg', alg)])
+    header = {}
 
-    plaintext = json_encode(claims)
+    if add_header:
+        header.update(add_header)
+
+    header.update({
+        'enc': enc,
+        'alg': alg,
+    })
+
+    plaintext = json_encode(claims).encode('utf-8')
 
     # compress (if required)
     if compression is not None:
@@ -145,6 +160,10 @@ def encrypt(claims, jwk, adata='', add_header=None, alg='RSA-OAEP',
     iv = rng(AES.block_size)
     encryption_key = rng((key_size // 8) + hash_mod.digest_size)
 
+    if not isinstance(adata, bytes):
+        # TODO this should probably just be an error
+        adata = adata.encode('utf-8')
+
     ciphertext = cipher(plaintext, encryption_key[:-hash_mod.digest_size], iv)
     hash = hash_fn(_jwe_hash_str(plaintext, iv, adata),
             encryption_key[-hash_mod.digest_size:], hash_mod)
@@ -153,15 +172,16 @@ def encrypt(claims, jwk, adata='', add_header=None, alg='RSA-OAEP',
     (cipher, _), _ = JWA[alg]
     encryption_key_ciphertext = cipher(encryption_key, jwk)
 
-    return JWE(*map(b64encode_url,
-            (json_encode(header),
+    return JWE(*list(map(b64encode_url,
+            (json_encode(header).encode('utf-8'),
             encryption_key_ciphertext,
             iv,
             ciphertext,
-            auth_tag(hash))))
+            auth_tag(hash)))))
 
 
-def decrypt(jwe, jwk, adata='', validate_claims=True, expiry_seconds=None):
+
+def decrypt(jwe, jwk, adata=b'', validate_claims=True, expiry_seconds=None):
     """ Decrypts a deserialized :class:`~jose.JWE`
 
     :param jwe: An instance of :class:`~jose.JWE`
@@ -182,7 +202,8 @@ def decrypt(jwe, jwk, adata='', validate_claims=True, expiry_seconds=None):
     """
     header, encryption_key_ciphertext, iv, ciphertext, tag = map(
         b64decode_url, jwe)
-    header = json_decode(header)
+    header = json_decode(header.decode('utf-8'))
+
 
     # decrypt cek
     (_, decipher), _ = JWA[header['alg']]
@@ -190,6 +211,10 @@ def decrypt(jwe, jwk, adata='', validate_claims=True, expiry_seconds=None):
 
     # decrypt body
     ((_, decipher), _), ((hash_fn, _), mod) = JWA[header['enc']]
+
+    if not isinstance(adata, bytes):
+        # TODO this should probably just be an error
+        adata = adata.encode('utf-8')
 
     plaintext = decipher(ciphertext, encryption_key[:-mod.digest_size], iv)
     hash = hash_fn(_jwe_hash_str(plaintext, iv, adata),
@@ -207,7 +232,7 @@ def decrypt(jwe, jwk, adata='', validate_claims=True, expiry_seconds=None):
 
         plaintext = decompress(plaintext)
 
-    claims = json_decode(plaintext)
+    claims = json_decode(plaintext.decode('utf-8'))
     _validate(claims, validate_claims, expiry_seconds)
 
     return JWT(header, claims)
@@ -227,8 +252,17 @@ def sign(claims, jwk, add_header=None, alg='HS256'):
     """
     (hash_fn, _), mod = JWA[alg]
 
-    header = dict((add_header or {}).items() + [('alg', alg)])
-    header, payload = map(b64encode_url, map(json_encode, (header, claims)))
+    header = {}
+
+    if add_header:
+        header.update(add_header)
+
+    header.update({
+        'alg': alg,
+    })
+
+    header = b64encode_url(json_encode(header).encode('utf-8'))
+    payload = b64encode_url(json_encode(claims).encode('utf-8'))
 
     sig = b64encode_url(hash_fn(_jws_hash_str(header, payload), jwk['k'],
         mod=mod))
@@ -254,14 +288,14 @@ def verify(jws, jwk, validate_claims=True, expiry_seconds=None):
     :raises: :class:`~jose.Error` if there is an error decrypting the JWE
     """
     header, payload, sig = map(b64decode_url, jws)
-    header = json_decode(header)
+    header = json_decode(header.decode('utf-8'))
     (_, verify_fn), mod = JWA[header['alg']]
 
     if not verify_fn(_jws_hash_str(jws.header, jws.payload),
             jwk['k'], sig, mod=mod):
         raise Error('Mismatched signatures')
 
-    claims = json_decode(b64decode_url(jws.payload))
+    claims = json_decode(b64decode_url(jws.payload).decode('utf-8'))
     _validate(claims, validate_claims, expiry_seconds)
 
     return JWT(header, claims)
@@ -270,28 +304,35 @@ def verify(jws, jwk, validate_claims=True, expiry_seconds=None):
 def b64decode_url(istr):
     """ JWT Tokens may be truncated without the usual trailing padding '='
         symbols. Compensate by padding to the nearest 4 bytes.
+
+    :param istr: A unicode string to decode
+    :returns: The byte string represented by `istr`
     """
-    istr = encode_safe(istr)
+    # unicode check for python 2 compatibility
+    if not isinstance(istr, (str, unicode)):
+        raise ValueError("expected string, got %r" % type(istr))
+
+    # required for python 2 as urlsafe_b64decode does not like unicode objects
+    # safe as b64 encoded string should be only ascii anyway
+    istr = str(istr)
+
     try:
         return urlsafe_b64decode(istr + '=' * (4 - (len(istr) % 4)))
-    except TypeError as e:
+    except (TypeError, binascii.Error) as e:
         raise Error('Unable to decode base64: %s' % (e))
 
 
 def b64encode_url(istr):
     """ JWT Tokens may be truncated without the usual trailing padding '='
         symbols. Compensate by padding to the nearest 4 bytes.
+
+    :param istr: a byte string to encode
+    :returns: The base64 representation of the input byte string as a regular
+        `str` object
     """
-    return urlsafe_b64encode(encode_safe(istr)).rstrip('=')
-
-
-def encode_safe(istr, encoding='utf8'):
-    try:
-        return istr.encode(encoding)
-    except UnicodeDecodeError:
-        # this will fail if istr is already encoded
-        pass
-    return istr
+    if not isinstance(istr, bytes):
+        raise Exception("expected bytestring")
+    return urlsafe_b64encode(istr).rstrip(b'=').decode('ascii')
 
 
 def auth_tag(hmac):
@@ -302,11 +343,17 @@ def auth_tag(hmac):
 
 def pad_pkcs7(s):
     sz = AES.block_size - (len(s) % AES.block_size)
-    return s + (chr(sz) * sz)
+    # TODO would be cleaner to do `bytes(sz) * sz` but python 2 behaves
+    # strangely
+    return s + (chr(sz) * sz).encode('ascii')
 
 
 def unpad_pkcs7(s):
-    return s[:-ord(s[-1])]
+    try:
+        return s[:-ord(s[-1])]
+    # Python 3 compatibility
+    except TypeError:
+        return s[:-s[-1]]
 
 
 def encrypt_oaep(plaintext, jwk):
@@ -361,9 +408,15 @@ def const_compare(stra, strb):
     if len(stra) != len(strb):
         return False
 
+    try:
+        # python 2 compatibility
+        orda, ordb = list(map(ord, stra)), list(map(ord, strb))
+    except TypeError:
+        orda, ordb = stra, strb
+
     res = 0
-    for a, b in zip(stra, strb):
-        res |= ord(a) ^ ord(b)
+    for a, b in zip(orda, ordb):
+        res |= a ^ b
     return res == 0
 
 
@@ -491,19 +544,19 @@ def _validate(claims, validate_claims, expiry_seconds):
         _check_not_before(now, not_before)
 
 
-def _jwe_hash_str(plaintext, iv, adata=''):
+def _jwe_hash_str(plaintext, iv, adata=b''):
     # http://tools.ietf.org/html/
     # draft-ietf-jose-json-web-algorithms-24#section-5.2.2.1
-    return '.'.join((adata, iv, plaintext, str(len(adata))))
+    return b'.'.join((adata, iv, plaintext, bytes(len(adata))))
 
 
 def _jws_hash_str(header, claims):
-    return '.'.join((header, claims))
+    return b'.'.join((header.encode('ascii'), claims.encode('ascii')))
 
 
 def cli_decrypt(jwt, key):
-    print decrypt(deserialize_compact(jwt), {'k':key},
-        validate_claims=False)
+    print(decrypt(deserialize_compact(jwt), {'k':key},
+                  validate_claims=False))
 
 
 def _cli():
