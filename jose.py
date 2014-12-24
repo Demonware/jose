@@ -144,7 +144,7 @@ def encrypt(claims, jwk, adata='', add_header=None, alg='RSA-OAEP',
     # body encryption/hash
     ((cipher, _), key_size), ((hash_fn, _), hash_mod) = JWA[enc]
     iv = rng(AES.block_size)
-    encryption_key = rng((key_size // 8) + hash_mod.digest_size)
+    encryption_key = rng(hash_mod.digest_size)
 
     ciphertext = cipher(plaintext, encryption_key[:-hash_mod.digest_size], iv)
     hash = hash_fn(_jwe_hash_str(ciphertext, iv, adata),
