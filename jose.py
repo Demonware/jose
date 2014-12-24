@@ -13,6 +13,7 @@ import datetime
 from base64 import urlsafe_b64encode, urlsafe_b64decode
 from collections import namedtuple
 from time import time
+from struct import pack
 
 from Crypto.Hash import HMAC, SHA256, SHA384, SHA512
 from Crypto.Cipher import PKCS1_OAEP, AES
@@ -494,7 +495,7 @@ def _validate(claims, validate_claims, expiry_seconds):
 def _jwe_hash_str(plaintext, iv, adata=''):
     # http://tools.ietf.org/html/
     # draft-ietf-jose-json-web-algorithms-24#section-5.2.2.1
-    return '.'.join((adata, iv, plaintext, str(len(adata))))
+    return '.'.join((adata, iv, plaintext, pack("!Q", len(adata) * 8)))
 
 
 def _jws_hash_str(header, claims):
