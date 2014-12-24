@@ -13,6 +13,7 @@ import datetime
 from base64 import urlsafe_b64encode, urlsafe_b64decode
 from collections import namedtuple
 from time import time
+from struct import pack
 
 from Crypto.Hash import HMAC, SHA256, SHA384, SHA512
 from Crypto.Cipher import PKCS1_OAEP, AES
@@ -143,11 +144,11 @@ def encrypt(claims, jwk, adata='', add_header=None, alg='RSA-OAEP',
     # body encryption/hash
     ((cipher, _), key_size), ((hash_fn, _), hash_mod) = JWA[enc]
     iv = rng(AES.block_size)
-    encryption_key = rng((key_size // 8) + hash_mod.digest_size)
+    encryption_key = rng(hash_mod.digest_size)
 
-    ciphertext = cipher(plaintext, encryption_key[:-hash_mod.digest_size], iv)
-    hash = hash_fn(_jwe_hash_str(plaintext, iv, adata),
-            encryption_key[-hash_mod.digest_size:], hash_mod)
+    ciphertext = cipher(plaintext, encryption_key[-hash_mod.digest_size/2:], iv)
+    hash = hash_fn(_jwe_hash_str(ciphertext, iv, adata),
+            encryption_key[:-hash_mod.digest_size/2], hash_mod)
 
     # cek encryption
     (cipher, _), _ = JWA[alg]
@@ -191,9 +192,9 @@ def decrypt(jwe, jwk, adata='', validate_claims=True, expiry_seconds=None):
     # decrypt body
     ((_, decipher), _), ((hash_fn, _), mod) = JWA[header['enc']]
 
-    plaintext = decipher(ciphertext, encryption_key[:-mod.digest_size], iv)
-    hash = hash_fn(_jwe_hash_str(plaintext, iv, adata),
-            encryption_key[-mod.digest_size:], mod=mod)
+    plaintext = decipher(ciphertext, encryption_key[-mod.digest_size/2:], iv)
+    hash = hash_fn(_jwe_hash_str(ciphertext, iv, adata),
+            encryption_key[:-mod.digest_size/2], mod=mod)
 
     if not const_compare(auth_tag(hash), tag):
         raise Error('Mismatched authentication tags')
@@ -491,10 +492,10 @@ def _validate(claims, validate_claims, expiry_seconds):
         _check_not_before(now, not_before)
 
 
-def _jwe_hash_str(plaintext, iv, adata=''):
+def _jwe_hash_str(ciphertext, iv, adata=''):
     # http://tools.ietf.org/html/
     # draft-ietf-jose-json-web-algorithms-24#section-5.2.2.1
-    return '.'.join((adata, iv, plaintext, str(len(adata))))
+    return '.'.join((adata, iv, ciphertext, pack("!Q", len(adata) * 8)))
 
 
 def _jws_hash_str(header, claims):
