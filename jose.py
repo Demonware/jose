@@ -146,9 +146,9 @@ def encrypt(claims, jwk, adata='', add_header=None, alg='RSA-OAEP',
     iv = rng(AES.block_size)
     encryption_key = rng(hash_mod.digest_size)
 
-    ciphertext = cipher(plaintext, encryption_key[:-hash_mod.digest_size], iv)
+    ciphertext = cipher(plaintext, encryption_key[-hash_mod.digest_size/2:], iv)
     hash = hash_fn(_jwe_hash_str(ciphertext, iv, adata),
-            encryption_key[-hash_mod.digest_size:], hash_mod)
+            encryption_key[:-hash_mod.digest_size/2], hash_mod)
 
     # cek encryption
     (cipher, _), _ = JWA[alg]
@@ -192,9 +192,9 @@ def decrypt(jwe, jwk, adata='', validate_claims=True, expiry_seconds=None):
     # decrypt body
     ((_, decipher), _), ((hash_fn, _), mod) = JWA[header['enc']]
 
-    plaintext = decipher(ciphertext, encryption_key[:-mod.digest_size], iv)
+    plaintext = decipher(ciphertext, encryption_key[-mod.digest_size/2:], iv)
     hash = hash_fn(_jwe_hash_str(ciphertext, iv, adata),
-            encryption_key[-mod.digest_size:], mod=mod)
+            encryption_key[:-mod.digest_size/2], mod=mod)
 
     if not const_compare(auth_tag(hash), tag):
         raise Error('Mismatched authentication tags')
