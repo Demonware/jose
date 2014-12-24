@@ -147,7 +147,7 @@ def encrypt(claims, jwk, adata='', add_header=None, alg='RSA-OAEP',
     encryption_key = rng((key_size // 8) + hash_mod.digest_size)
 
     ciphertext = cipher(plaintext, encryption_key[:-hash_mod.digest_size], iv)
-    hash = hash_fn(_jwe_hash_str(plaintext, iv, adata),
+    hash = hash_fn(_jwe_hash_str(ciphertext, iv, adata),
             encryption_key[-hash_mod.digest_size:], hash_mod)
 
     # cek encryption
@@ -193,7 +193,7 @@ def decrypt(jwe, jwk, adata='', validate_claims=True, expiry_seconds=None):
     ((_, decipher), _), ((hash_fn, _), mod) = JWA[header['enc']]
 
     plaintext = decipher(ciphertext, encryption_key[:-mod.digest_size], iv)
-    hash = hash_fn(_jwe_hash_str(plaintext, iv, adata),
+    hash = hash_fn(_jwe_hash_str(ciphertext, iv, adata),
             encryption_key[-mod.digest_size:], mod=mod)
 
     if not const_compare(auth_tag(hash), tag):
@@ -492,10 +492,10 @@ def _validate(claims, validate_claims, expiry_seconds):
         _check_not_before(now, not_before)
 
 
-def _jwe_hash_str(plaintext, iv, adata=''):
+def _jwe_hash_str(ciphertext, iv, adata=''):
     # http://tools.ietf.org/html/
     # draft-ietf-jose-json-web-algorithms-24#section-5.2.2.1
-    return '.'.join((adata, iv, plaintext, pack("!Q", len(adata) * 8)))
+    return '.'.join((adata, iv, ciphertext, pack("!Q", len(adata) * 8)))
 
 
 def _jws_hash_str(header, claims):
