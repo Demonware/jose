@@ -1,9 +1,23 @@
 CHANGES
 =======
 
+0.2.2 (2015-01-07)
+------------------
+- RFC compliance fixes (patch contributed by jaimeperez)
+
+Important: This change introduces a temporarily injected key (__v) in order to
+distinguish between legacy and newly issued tokens. This allows for the use
+of either token as to not break backwards compatibility and (possibly)
+degrade user experience. This will be removed for v1.0.
+
+In order to verify whether or not clients are using a legacy token, the
+application code can verify whether or not the key "__v" is contained in the
+headers (this can be done after deserialize_compact). The existence of the key
+identifies a newly created token.
+
 0.2.1 (2014-11-24)
 ------------------
-- Unpinned pycrypto dependency
+- Unpinned pycrypto dependency (patch contributed by kuba)
 - Added CLI exposing "decrypt" command
 - Added custom exceptions, making client error handling easier
 

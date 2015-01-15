@@ -6,7 +6,9 @@ from copy import copy
 from itertools import product
 from time import time
 
+from Crypto.Cipher import AES
 from Crypto.PublicKey import RSA
+from Crypto.Random import get_random_bytes
 
 import jose
 
@@ -20,6 +22,66 @@ rsa_pub_key = {
 }
 
 claims = {'john': 'cleese'}
+
+
+def legacy_encrypt(claims, jwk, adata='', add_header=None, alg='RSA-OAEP',
+        enc='A128CBC-HS256', rng=get_random_bytes, compression=None):
+    # see https://github.com/Demonware/jose/pull/3/files
+
+    header = dict((add_header or {}).items() + [
+        ('enc', enc), ('alg', alg)])
+
+    plaintext = jose.json_encode(claims)
+
+    # compress (if required)
+    if compression is not None:
+        header['zip'] = compression
+        try:
+            (compress, _) = jose.COMPRESSION[compression]
+        except KeyError:
+            raise Error(
+                'Unsupported compression algorithm: {}'.format(compression))
+        plaintext = compress(plaintext)
+
+    # body encryption/hash
+    ((cipher, _), key_size), ((hash_fn, _), hash_mod) = jose.JWA[enc]
+    iv = rng(AES.block_size)
+    encryption_key = rng((key_size // 8) + hash_mod.digest_size)
+
+    ciphertext = cipher(plaintext, encryption_key[:-hash_mod.digest_size], iv)
+    hash = hash_fn(jose._jwe_hash_str(plaintext, iv, adata, True),
+            encryption_key[-hash_mod.digest_size:], hash_mod)
+
+    # cek encryption
+    (cipher, _), _ = jose.JWA[alg]
+    encryption_key_ciphertext = cipher(encryption_key, jwk)
+
+    return jose.JWE(*map(jose.b64encode_url,
+            (jose.json_encode(header),
+            encryption_key_ciphertext,
+            iv,
+            ciphertext,
+            jose.auth_tag(hash))))
+
+
+class TestLegacyDecrypt(unittest.TestCase):
+    def test_jwe(self):
+        bad_key = {'k': RSA.generate(2048).exportKey('PEM')}
+
+        jwe = legacy_encrypt(claims, rsa_pub_key)
+        token = jose.serialize_compact(jwe)
+
+        jwt = jose.decrypt(jose.deserialize_compact(token), rsa_priv_key)
+
+        self.assertEqual(jwt.claims, claims)
+        self.assertNotIn(jose._TEMP_VER_KEY, claims)
+
+        # invalid key
+        try:
+            jose.decrypt(jose.deserialize_compact(token), bad_key)
+            self.fail()
+        except jose.Error as e:
+            self.assertEqual(e.message, 'Incorrect decryption.')
 
 
 class TestSerializeDeserialize(unittest.TestCase):
@@ -51,6 +113,7 @@ class TestJWE(unittest.TestCase):
             token = jose.serialize_compact(jwe)
 
             jwt = jose.decrypt(jose.deserialize_compact(token), rsa_priv_key)
+            self.assertNotIn(jose._TEMP_VER_KEY, claims)
 
             self.assertEqual(jwt.claims, claims)
 
@@ -90,12 +153,8 @@ class TestJWE(unittest.TestCase):
             self.assertEqual(jwt.claims, claims)
 
     def test_jwe_invalid_base64(self):
-        claims = {jose.CLAIM_EXPIRATION_TIME: int(time()) - 5}
-        et = jose.serialize_compact(jose.encrypt(claims, rsa_pub_key))
-        bad = b'\x00' + et
-
         try:
-            jose.decrypt(jose.deserialize_compact(bad), rsa_priv_key)
+            jose.decrypt('aaa', rsa_priv_key)
             self.fail()  # expecting error due to invalid base64
         except jose.Error as e:
             pass
@@ -216,15 +275,16 @@ class TestJWE(unittest.TestCase):
 
     def test_decrypt_invalid_compression_error(self):
         jwe = jose.encrypt(claims, rsa_pub_key, compression='DEF')
-        header = jose.b64encode_url('{"alg": "RSA-OAEP", '
-            '"enc": "A128CBC-HS256", "zip": "BAD"}')
+        header = jose.b64encode_url(
+            '{"alg": "RSA-OAEP", ''"enc": "A128CBC-HS256", "__v": 1,'
+            '"zip": "BAD"}')
 
         try:
             jose.decrypt(jose.JWE(*((header,) + (jwe[1:]))), rsa_priv_key)
             self.fail()
         except jose.Error as e:
-            self.assertEqual(e.message,
-                    'Unsupported compression algorithm: BAD')
+            self.assertEqual(
+                e.message, 'Unsupported compression algorithm: BAD')
 
 
 class TestJWS(unittest.TestCase):

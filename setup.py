@@ -10,6 +10,10 @@ REQUIRES = filter(lambda s: len(s) > 0,
 pkg_name = 'jose'
 pyver = ''.join(('python', '.'.join(map(str, sys.version_info[:2]))))
 
+README = open(os.path.join(here, 'README')).read()
+CHANGES = open(os.path.join(here, 'CHANGES')).read()
+CONTRIB = open(os.path.join(here, 'CONTRIB')).read()
+
 
 class bdist_rpm(_bdist_rpm):
     op_map = {
@@ -39,7 +43,7 @@ if __name__ == '__main__':
         pkg_name = '-'.join((pyver.replace('.', ''), pkg_name))
 
     setup(name=pkg_name,
-        version='0.2.1',
+        version='0.2.2',
         author='Demian Brecht',
         author_email='dbrecht@demonware.net',
         py_modules=['jose'],
@@ -61,4 +65,5 @@ if __name__ == '__main__':
                 'jose = jose:_cli',
             )
         },
+        long_description='\n\n'.join((README, CHANGES, CONTRIB)),
     )
