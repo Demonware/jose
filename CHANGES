@@ -1,6 +1,13 @@
 CHANGES
 =======
 
+0.3.0 (2015-04-10)
+------------------
+- Fixed critical JWT vulnerability (patch contributed by yuriikonovaliuk)
+
+Important: Only unencrypted tokens are vulnerable. This fix lead to backward
+incompatible change to `verify` function signature.
+
 0.2.2 (2015-01-07)
 ------------------
 - RFC compliance fixes (patch contributed by jaimeperez)

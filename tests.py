@@ -295,7 +295,7 @@ class TestJWS(unittest.TestCase):
 
         for alg in algs:
             st = jose.serialize_compact(jose.sign(claims, jwk, alg=alg))
-            jwt = jose.verify(jose.deserialize_compact(st), jwk)
+            jwt = jose.verify(jose.deserialize_compact(st), jwk, alg)
 
             self.assertEqual(jwt.claims, claims)
 
@@ -305,16 +305,28 @@ class TestJWS(unittest.TestCase):
         for alg in algs:
             st = jose.serialize_compact(jose.sign(claims, rsa_priv_key,
                 alg=alg))
-            jwt = jose.verify(jose.deserialize_compact(st), rsa_pub_key)
+            jwt = jose.verify(jose.deserialize_compact(st), rsa_pub_key, alg)
             self.assertEqual(jwt.claims, claims)
 
     def test_jws_signature_mismatch_error(self):
+        alg = 'HS256'
         jwk = {'k': 'password'}
-        jws = jose.sign(claims, jwk)
+        jws = jose.sign(claims, jwk, alg=alg)
         try:
-            jose.verify(jose.JWS(jws.header, jws.payload, 'asd'), jwk)
+            jose.verify(jose.JWS(jws.header, jws.payload, 'asd'), jwk, alg)
         except jose.Error as e:
             self.assertEqual(e.message, 'Mismatched signatures')
+
+    def test_jws_invalid_algorithm_error(self):
+        sign_alg = 'HS256'
+        verify_alg = 'RS256'
+        jwk = {'k': 'password'}
+        jws = jose.sign(claims, jwk, alg=sign_alg)
+        try:
+            jose.verify(jose.JWS(jws.header, jws.payload, 'asd'), jwk,
+                        verify_alg)
+        except jose.Error as e:
+            self.assertEqual(e.message, 'Invalid algorithm')
 
 
 class TestUtils(unittest.TestCase):

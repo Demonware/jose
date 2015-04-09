@@ -144,7 +144,7 @@ def encrypt(claims, jwk, adata='', add_header=None, alg='RSA-OAEP',
 
     # promote the temp key to the header
     assert _TEMP_VER_KEY not in header
-    header[_TEMP_VER_KEY] = claims[_TEMP_VER_KEY] 
+    header[_TEMP_VER_KEY] = claims[_TEMP_VER_KEY]
 
     plaintext = json_encode(claims)
 
@@ -216,7 +216,7 @@ def decrypt(jwe, jwk, adata='', validate_claims=True, expiry_seconds=None):
     else:
         plaintext = decipher(ciphertext, encryption_key[:-mod.digest_size], iv)
         hash = hash_fn(_jwe_hash_str(plaintext, iv, adata, True),
-            encryption_key[-mod.digest_size:], mod=mod) 
+            encryption_key[-mod.digest_size:], mod=mod)
 
     if not const_compare(auth_tag(hash), tag):
         raise Error('Mismatched authentication tags')
@@ -265,12 +265,13 @@ def sign(claims, jwk, add_header=None, alg='HS256'):
     return JWS(header, payload, sig)
 
 
-def verify(jws, jwk, validate_claims=True, expiry_seconds=None):
+def verify(jws, jwk, alg, validate_claims=True, expiry_seconds=None):
     """ Verifies the given :class:`~jose.JWS`
 
     :param jws: The :class:`~jose.JWS` to be verified.
     :param jwk: A `dict` representing the JWK to use for verification. This
                 parameter is algorithm-specific.
+    :param alg: The algorithm to verify the signature with.
     :param validate_claims: A `bool` indicating whether or not the `exp`, `iat`
                             and `nbf` claims should be validated. Defaults to
                             `True`.
@@ -284,6 +285,9 @@ def verify(jws, jwk, validate_claims=True, expiry_seconds=None):
     """
     header, payload, sig = map(b64decode_url, jws)
     header = json_decode(header)
+    if alg != header['alg']:
+        raise Error('Invalid algorithm')
+
     (_, verify_fn), mod = JWA[header['alg']]
 
     if not verify_fn(_jws_hash_str(jws.header, jws.payload),
