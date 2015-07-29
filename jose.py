@@ -57,7 +57,7 @@ CLAIM_JWT_ID = 'jti'
 # these are temporary to allow graceful deprecation of legacy encrypted tokens.
 # these will be removed in v1.0
 _TEMP_VER_KEY = '__v'
-_TEMP_VER = 1
+_TEMP_VER = 2
 
 
 class Error(Exception):
@@ -209,7 +209,7 @@ def decrypt(jwe, jwk, adata='', validate_claims=True, expiry_seconds=None):
     # decrypt body
     ((_, decipher), _), ((hash_fn, _), mod) = JWA[header['enc']]
 
-    if header.get(_TEMP_VER_KEY) == _TEMP_VER:
+    if header.get(_TEMP_VER_KEY) >= _TEMP_VER:
         plaintext = decipher(ciphertext, encryption_key[-mod.digest_size/2:], iv)
         hash = hash_fn(_jwe_hash_str(ciphertext, iv, adata),
                 encryption_key[:-mod.digest_size/2], mod=mod)
@@ -529,7 +529,7 @@ def _jwe_hash_str(ciphertext, iv, adata='', legacy=False):
     # draft-ietf-jose-json-web-algorithms-24#section-5.2.2.1
     if legacy:
         return '.'.join((adata, iv, ciphertext, str(len(adata))))
-    return '.'.join((adata, iv, ciphertext, pack("!Q", len(adata) * 8)))
+    return ''.join((adata, iv, ciphertext, pack("!Q", len(adata) * 8)))
 
 
 def _jws_hash_str(header, claims):
