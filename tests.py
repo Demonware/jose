@@ -276,8 +276,11 @@ class TestJWE(unittest.TestCase):
     def test_decrypt_invalid_compression_error(self):
         jwe = jose.encrypt(claims, rsa_pub_key, compression='DEF')
         header = jose.b64encode_url(
-            '{"alg": "RSA-OAEP", ''"enc": "A128CBC-HS256", "__v": 1,'
-            '"zip": "BAD"}')
+            jose.json_encode(
+                {"alg": "RSA-OAEP", "enc": "A128CBC-HS256",
+                 jose._TEMP_VER_KEY: jose._TEMP_VER, "zip": "BAD"}
+            )
+        )
 
         try:
             jose.decrypt(jose.JWE(*((header,) + (jwe[1:]))), rsa_priv_key)
