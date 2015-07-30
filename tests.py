@@ -2,7 +2,7 @@ import json
 import unittest
 
 from base64 import b64encode
-from copy import copy
+from copy import copy, deepcopy
 from itertools import product
 from time import time
 
@@ -25,11 +25,20 @@ claims = {'john': 'cleese'}
 
 
 def legacy_encrypt(claims, jwk, adata='', add_header=None, alg='RSA-OAEP',
-        enc='A128CBC-HS256', rng=get_random_bytes, compression=None):
+        enc='A128CBC-HS256', rng=get_random_bytes, compression=None, version=None):
     # see https://github.com/Demonware/jose/pull/3/files
 
     header = dict((add_header or {}).items() + [
         ('enc', enc), ('alg', alg)])
+
+    if version == 1:
+        claims = deepcopy(claims)
+        assert jose._TEMP_VER_KEY not in claims
+        claims[jose._TEMP_VER_KEY] = version
+
+        # promote the temp key to the header
+        assert jose._TEMP_VER_KEY not in header
+        header[jose._TEMP_VER_KEY] = version
 
     plaintext = jose.json_encode(claims)
 
@@ -39,18 +48,24 @@ def legacy_encrypt(claims, jwk, adata='', add_header=None, alg='RSA-OAEP',
         try:
             (compress, _) = jose.COMPRESSION[compression]
         except KeyError:
-            raise Error(
+            raise jose.Error(
                 'Unsupported compression algorithm: {}'.format(compression))
         plaintext = compress(plaintext)
 
     # body encryption/hash
     ((cipher, _), key_size), ((hash_fn, _), hash_mod) = jose.JWA[enc]
     iv = rng(AES.block_size)
-    encryption_key = rng((key_size // 8) + hash_mod.digest_size)
+    if version == 1:
+        encryption_key = rng(hash_mod.digest_size)
+        cipher_key = encryption_key[-hash_mod.digest_size/2:]
+        mac_key = encryption_key[:-hash_mod.digest_size/2]
+    else:
+        encryption_key = rng((key_size // 8) + hash_mod.digest_size)
+        cipher_key = encryption_key[:-hash_mod.digest_size]
+        mac_key = encryption_key[-hash_mod.digest_size:]
 
-    ciphertext = cipher(plaintext, encryption_key[:-hash_mod.digest_size], iv)
-    hash = hash_fn(jose._jwe_hash_str(plaintext, iv, adata, True),
-            encryption_key[-hash_mod.digest_size:], hash_mod)
+    ciphertext = cipher(plaintext, cipher_key, iv)
+    hash = hash_fn(jose._jwe_hash_str(ciphertext, iv, adata, version), mac_key, hash_mod)
 
     # cek encryption
     (cipher, _), _ = jose.JWA[alg]
@@ -82,6 +97,17 @@ class TestLegacyDecrypt(unittest.TestCase):
             self.fail()
         except jose.Error as e:
             self.assertEqual(e.message, 'Incorrect decryption.')
+
+    def test_version1(self):
+        bad_key = {'k': RSA.generate(2048).exportKey('PEM')}
+
+        jwe = legacy_encrypt(claims, rsa_pub_key, version=1)
+        token = jose.serialize_compact(jwe)
+
+        jwt = jose.decrypt(jose.deserialize_compact(token), rsa_priv_key)
+
+        self.assertEqual(jwt.claims, claims)
+        self.assertEqual(jwt.header.get(jose._TEMP_VER_KEY), 1)
 
 
 class TestSerializeDeserialize(unittest.TestCase):

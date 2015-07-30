@@ -209,13 +209,14 @@ def decrypt(jwe, jwk, adata='', validate_claims=True, expiry_seconds=None):
     # decrypt body
     ((_, decipher), _), ((hash_fn, _), mod) = JWA[header['enc']]
 
-    if header.get(_TEMP_VER_KEY) >= _TEMP_VER:
+    version = header.get(_TEMP_VER_KEY, None)
+    if version:
         plaintext = decipher(ciphertext, encryption_key[-mod.digest_size/2:], iv)
-        hash = hash_fn(_jwe_hash_str(ciphertext, iv, adata),
+        hash = hash_fn(_jwe_hash_str(ciphertext, iv, adata, version),
                 encryption_key[:-mod.digest_size/2], mod=mod)
     else:
         plaintext = decipher(ciphertext, encryption_key[:-mod.digest_size], iv)
-        hash = hash_fn(_jwe_hash_str(plaintext, iv, adata, True),
+        hash = hash_fn(_jwe_hash_str(ciphertext, iv, adata, version),
             encryption_key[-mod.digest_size:], mod=mod)
 
     if not const_compare(auth_tag(hash), tag):
@@ -524,11 +525,16 @@ def _validate(claims, validate_claims, expiry_seconds):
         _check_not_before(now, not_before)
 
 
-def _jwe_hash_str(ciphertext, iv, adata='', legacy=False):
+def _jwe_hash_str(ciphertext, iv, adata='', version=_TEMP_VER):
     # http://tools.ietf.org/html/
     # draft-ietf-jose-json-web-algorithms-24#section-5.2.2.1
-    if legacy:
+    # Both tokens without version and with version 1 should be ignored in
+    # the future as they use incorrect hashing. The version parameter
+    # should also be removed.
+    if not version:
         return '.'.join((adata, iv, ciphertext, str(len(adata))))
+    elif version == 1:
+        return '.'.join((adata, iv, ciphertext, pack("!Q", len(adata) * 8)))
     return ''.join((adata, iv, ciphertext, pack("!Q", len(adata) * 8)))
 
 
