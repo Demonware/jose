@@ -209,7 +209,7 @@ def decrypt(jwe, jwk, adata='', validate_claims=True, expiry_seconds=None):
     # decrypt body
     ((_, decipher), _), ((hash_fn, _), mod) = JWA[header['enc']]
 
-    version = header.get(_TEMP_VER_KEY, None)
+    version = header.get(_TEMP_VER_KEY)
     if version:
         plaintext = decipher(ciphertext, encryption_key[-mod.digest_size/2:], iv)
         hash = hash_fn(_jwe_hash_str(ciphertext, iv, adata, version),
