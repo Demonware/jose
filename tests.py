@@ -37,9 +37,13 @@ def legacy_encrypt(claims, jwk, adata='', add_header=None, alg='RSA-OAEP',
     if compression is not None:
         header['zip'] = compression
         try:
-            (compress, _) = jose.COMPRESSION[compression]
+            if compression == 'BAD':
+                # facilitate test for bad compression algorithm
+                (compress, _) = jose.COMPRESSION['DEF']
+            else:
+                (compress, _) = jose.COMPRESSION[compression]
         except KeyError:
-            raise Error(
+            raise jose.Error(
                 'Unsupported compression algorithm: {}'.format(compression))
         plaintext = compress(plaintext)
 
@@ -274,13 +278,9 @@ class TestJWE(unittest.TestCase):
             pass
 
     def test_decrypt_invalid_compression_error(self):
-        jwe = jose.encrypt(claims, rsa_pub_key, compression='DEF')
-        header = jose.b64encode_url(
-            '{"alg": "RSA-OAEP", ''"enc": "A128CBC-HS256", "__v": 1,'
-            '"zip": "BAD"}')
-
+        jwe = legacy_encrypt(claims, rsa_pub_key, compression='BAD')
         try:
-            jose.decrypt(jose.JWE(*((header,) + (jwe[1:]))), rsa_priv_key)
+            jose.decrypt(jwe, rsa_priv_key)
             self.fail()
         except jose.Error as e:
             self.assertEqual(
