@@ -164,10 +164,11 @@ def encrypt(claims, jwk, adata='', add_header=None, alg='RSA-OAEP',
     ((cipher, _), key_size), ((hash_fn, _), hash_mod) = JWA[enc]
     iv = rng(AES.block_size)
     encryption_key = rng(hash_mod.digest_size)
+    enc_key = encryption_key[-hash_mod.digest_size/2:]  # first half
+    mac_key = encryption_key[:-hash_mod.digest_size/2]  # second half
 
-    ciphertext = cipher(plaintext, encryption_key[-hash_mod.digest_size/2:], iv)
-    hash = hash_fn(_jwe_hash_str(ciphertext, iv, adata),
-            encryption_key[:-hash_mod.digest_size/2], hash_mod)
+    ciphertext = cipher(plaintext, enc_key, iv)
+    hash = hash_fn(_jwe_hash_str(ciphertext, iv, adata), mac_key, hash_mod)
 
     # cek encryption
     (cipher, _), _ = JWA[alg]
@@ -213,18 +214,21 @@ def decrypt(jwe, jwk, adata='', validate_claims=True, expiry_seconds=None):
     # decrypt body
     ((_, decipher), _), ((hash_fn, _), mod) = JWA[header['enc']]
 
+    enc_key = encryption_key[-mod.digest_size/2:]  # first half
+    mac_key = encryption_key[:-mod.digest_size/2]  # second half
+
     if header.get(_TEMP_VER_KEY) == _TEMP_VER or \
             len(encryption_key) == mod.digest_size:
-        hash = hash_fn(_jwe_hash_str(ciphertext, iv, adata),
-                encryption_key[:-mod.digest_size/2], mod=mod)
+        hash = hash_fn(_jwe_hash_str(ciphertext, iv, adata), mac_key, mod=mod)
         if not const_compare(auth_tag(hash), tag):
             raise Error('Mismatched authentication tags')
 
-        plaintext = decipher(ciphertext, encryption_key[-mod.digest_size/2:], iv)
+        plaintext = decipher(ciphertext, enc_key, iv)
     else:
-        plaintext = decipher(ciphertext, encryption_key[:-mod.digest_size], iv)
-        hash = hash_fn(_jwe_hash_str(plaintext, iv, adata, True),
-            encryption_key[-mod.digest_size:], mod=mod)
+        enc_key = encryption_key[:-mod.digest_size]  # first half
+        mac_key = encryption_key[-mod.digest_size:]  # second half
+        plaintext = decipher(ciphertext, enc_key, iv)
+        hash = hash_fn(_jwe_hash_str(plaintext, iv, adata, True), mac_key, mod=mod)
 
         if not const_compare(auth_tag(hash), tag):
             raise Error('Mismatched authentication tags')
