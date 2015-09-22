@@ -213,7 +213,8 @@ def decrypt(jwe, jwk, adata='', validate_claims=True, expiry_seconds=None):
     # decrypt body
     ((_, decipher), _), ((hash_fn, _), mod) = JWA[header['enc']]
 
-    if header.get(_TEMP_VER_KEY) == _TEMP_VER:
+    if header.get(_TEMP_VER_KEY) == _TEMP_VER or \
+            len(encryption_key) == mod.digest_size:
         plaintext = decipher(ciphertext, encryption_key[-mod.digest_size/2:], iv)
         hash = hash_fn(_jwe_hash_str(ciphertext, iv, adata),
                 encryption_key[:-mod.digest_size/2], mod=mod)
