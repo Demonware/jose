@@ -545,11 +545,11 @@ def _jwe_adata_str(adata, header):
 
 
 def _jwe_hash_str(ciphertext, iv, adata='', legacy=False):
-    # http://tools.ietf.org/html/
-    # draft-ietf-jose-json-web-algorithms-24#section-5.2.2.1
     if legacy:
         return '.'.join((adata, iv, ciphertext, str(len(adata))))
-    return '.'.join((adata, iv, ciphertext, pack("!Q", len(adata) * 8)))
+    # http://tools.ietf.org/html/
+    # draft-ietf-jose-json-web-algorithms-40#section-5.2.2.1
+    return ''.join((adata, iv, ciphertext, pack("!Q", len(adata) * 8)))
 
 
 def _jws_hash_str(header, claims):
