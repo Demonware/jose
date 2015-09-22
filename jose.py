@@ -146,6 +146,8 @@ def encrypt(claims, jwk, adata='', add_header=None, alg='RSA-OAEP',
     assert _TEMP_VER_KEY not in header
     header[_TEMP_VER_KEY] = claims[_TEMP_VER_KEY]
 
+    adata = _jwe_adata_str(adata, b64encode_url(json_encode(header)))
+
     plaintext = json_encode(claims)
 
     # compress (if required)
@@ -201,6 +203,8 @@ def decrypt(jwe, jwk, adata='', validate_claims=True, expiry_seconds=None):
     header, encryption_key_ciphertext, iv, ciphertext, tag = map(
         b64decode_url, jwe)
     header = json_decode(header)
+
+    adata = _jwe_adata_str(adata, jwe[0])
 
     # decrypt cek
     (_, decipher), _ = JWA[header['alg']]
@@ -522,6 +526,22 @@ def _validate(claims, validate_claims, expiry_seconds):
         pass
     else:
         _check_not_before(now, not_before)
+
+
+def _jwe_adata_str(adata, header):
+    if adata == '':
+        # draft-ietf-jose-json-web-encryption-40  5.1.  Message Encryption step 14
+        # 'Let the Additional Authenticated Data encryption parameter be
+        # ASCII(Encoded Protected Header).'
+        adata = str(header)
+    else:
+        # However if a JWE AAD value is present
+        # (which can only be the case when using the JWE JSON
+        # Serialization), instead let the Additional Authenticated Data
+        # encryption parameter be ASCII(Encoded Protected Header || '.' ||
+        # BASE64URL(JWE AAD)).
+        adata = '.'.join([str(header), adata])
+    return adata
 
 
 def _jwe_hash_str(ciphertext, iv, adata='', legacy=False):
