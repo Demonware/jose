@@ -215,16 +215,19 @@ def decrypt(jwe, jwk, adata='', validate_claims=True, expiry_seconds=None):
 
     if header.get(_TEMP_VER_KEY) == _TEMP_VER or \
             len(encryption_key) == mod.digest_size:
-        plaintext = decipher(ciphertext, encryption_key[-mod.digest_size/2:], iv)
         hash = hash_fn(_jwe_hash_str(ciphertext, iv, adata),
                 encryption_key[:-mod.digest_size/2], mod=mod)
+        if not const_compare(auth_tag(hash), tag):
+            raise Error('Mismatched authentication tags')
+
+        plaintext = decipher(ciphertext, encryption_key[-mod.digest_size/2:], iv)
     else:
         plaintext = decipher(ciphertext, encryption_key[:-mod.digest_size], iv)
         hash = hash_fn(_jwe_hash_str(plaintext, iv, adata, True),
             encryption_key[-mod.digest_size:], mod=mod)
 
-    if not const_compare(auth_tag(hash), tag):
-        raise Error('Mismatched authentication tags')
+        if not const_compare(auth_tag(hash), tag):
+            raise Error('Mismatched authentication tags')
 
     if 'zip' in header:
         try:
