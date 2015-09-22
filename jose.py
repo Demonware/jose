@@ -146,8 +146,6 @@ def encrypt(claims, jwk, adata='', add_header=None, alg='RSA-OAEP',
     assert _TEMP_VER_KEY not in header
     header[_TEMP_VER_KEY] = claims[_TEMP_VER_KEY]
 
-    adata = _jwe_adata_str(adata, b64encode_url(json_encode(header)))
-
     plaintext = json_encode(claims)
 
     # compress (if required)
@@ -159,6 +157,8 @@ def encrypt(claims, jwk, adata='', add_header=None, alg='RSA-OAEP',
             raise Error(
                 'Unsupported compression algorithm: {}'.format(compression))
         plaintext = compress(plaintext)
+
+    adata = _jwe_adata_str(adata, b64encode_url(json_encode(header)))
 
     # body encryption/hash
     ((cipher, _), key_size), ((hash_fn, _), hash_mod) = JWA[enc]
@@ -205,8 +205,6 @@ def decrypt(jwe, jwk, adata='', validate_claims=True, expiry_seconds=None):
         b64decode_url, jwe)
     header = json_decode(header)
 
-    adata = _jwe_adata_str(adata, jwe[0])
-
     # decrypt cek
     (_, decipher), _ = JWA[header['alg']]
     encryption_key = decipher(encryption_key_ciphertext, jwk)
@@ -219,6 +217,8 @@ def decrypt(jwe, jwk, adata='', validate_claims=True, expiry_seconds=None):
 
     if header.get(_TEMP_VER_KEY) == _TEMP_VER or \
             len(encryption_key) == mod.digest_size:
+        adata = _jwe_adata_str(adata, jwe[0])
+
         hash = hash_fn(_jwe_hash_str(ciphertext, iv, adata), mac_key, mod=mod)
         if not const_compare(auth_tag(hash), tag):
             raise Error('Mismatched authentication tags')
