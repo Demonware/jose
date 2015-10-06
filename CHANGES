@@ -1,6 +1,12 @@
 CHANGES
 =======
 
+1.0.0 (2015-10-06)
+------------------
+- Fixed bug in authentication tag computation (patch contributed by jaimeperez)
+
+Important: This is a backwards incompatible change, in that tokens produced in this version will not be decipherable by tokens < 1.0.0. The jwe hash string used was changed to use an empty string rather than "." to fall in line with https://tools.ietf.org/html/rfc7518#section-5.2.2.1
+
 0.3.0 (2015-04-10)
 ------------------
 - Fixed critical JWT vulnerability (patch contributed by yuriikonovaliuk)
