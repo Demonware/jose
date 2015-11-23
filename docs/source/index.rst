@@ -103,7 +103,7 @@ Example
     jwt = jose.serialize_compact(jws)
     # 'eyJhbGciOiAiSFMyNTYifQ.eyJpc3MiOiAiaHR0cDovL3d3dy5leGFtcGxlLmNvbSIsICJzdWIiOiA0MiwgImV4cCI6IDEzOTU2NzQ0Mjd9.WYApAiwiKd-eDClA1fg7XFrnfHzUTgrmdRQY4M19Vr8'
 
-    jose.verify(jose.deserialize_compact(jwt), jwk)
+    jose.verify(jose.deserialize_compact(jwt), jwk, 'HS256')
     # JWT(header={u'alg': u'HS256'}, claims={u'iss': u'http://www.example.com', u'sub': 42, u'exp': 1395674427})
 
 Algorithm support
