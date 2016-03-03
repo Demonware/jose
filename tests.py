@@ -11,7 +11,7 @@ from Crypto.PublicKey import RSA
 from Crypto.Random import get_random_bytes
 
 import jose
-
+aes_128_key = "This is a key123"
 rsa_key = RSA.generate(2048)
 
 rsa_priv_key = {
@@ -159,7 +159,25 @@ class TestJWE(unittest.TestCase):
             jwt = jose.decrypt(jose.deserialize_compact(et), rsa_priv_key)
 
             self.assertEqual(jwt.header['foo'], add_header['foo'])
+    def test_jwe_symmetric(self):
+        
+        for (alg, jwk), enc in product(self.algs, self.encs):
+            jwe = jose.encrypt(claims, aes_128_key, alg="A128CBC")
 
+            # make sure the body can't be loaded as json (should be encrypted)
+            try:
+                json.loads(jose.b64decode_url(jwe.ciphertext))
+                self.fail()
+            except ValueError:
+                pass
+
+            token = jose.serialize_compact(jwe)
+
+            jwt = jose.decrypt(jose.deserialize_compact(token), aes_128_key)
+            self.assertNotIn(jose._TEMP_VER_KEY, claims)
+
+            self.assertEqual(jwt.claims, claims)
+			
     def test_jwe_adata(self):
         adata = '42'
         for (alg, jwk), enc in product(self.algs, self.encs):
