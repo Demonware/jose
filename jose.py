@@ -168,8 +168,14 @@ def encrypt(claims, jwk, adata='', add_header=None, alg='RSA-OAEP',
             encryption_key[:-hash_mod.digest_size/2], hash_mod)
 
     # cek encryption
-    (cipher, _), _ = JWA[alg]
-    encryption_key_ciphertext = cipher(encryption_key, jwk)
+    alg = header['alg']
+    if (alg == "A128CBC" or alg == "A192CBC" or alg == "A256CBC"):
+		(cipher, _), _ = JWA[alg]
+		encryption_key_ciphertext = cipher(encryption_key, jwk, iv)
+    else:
+		(cipher, _), _ = JWA[alg]
+		encryption_key_ciphertext = cipher(encryption_key, jwk)
+
 
     return JWE(*map(b64encode_url,
             (json_encode(header),
@@ -203,9 +209,14 @@ def decrypt(jwe, jwk, adata='', validate_claims=True, expiry_seconds=None):
     header = json_decode(header)
 
     # decrypt cek
-    (_, decipher), _ = JWA[header['alg']]
-    encryption_key = decipher(encryption_key_ciphertext, jwk)
-
+    alg = header['alg']
+    if (alg == "A128CBC" or alg == "A192CBC" or alg == "A256CBC"):
+        (_, decipher), _ = JWA[header['alg']]
+        encryption_key = decipher(encryption_key_ciphertext, jwk, iv)
+    else:	
+        (_, decipher), _ = JWA[header['alg']]
+        encryption_key = decipher(encryption_key_ciphertext, jwk)
+		
     # decrypt body
     ((_, decipher), _), ((hash_fn, _), mod) = JWA[header['enc']]
 
