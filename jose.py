@@ -495,8 +495,6 @@ class _JWA(object):
 
         try:
             enc, hash = key.split('-')
-        'A192CBC': ((encrypt_aescbc, decrypt_aescbc), 192),
-        'A256CBC': ((encrypt_aescbc, decrypt_aescbc), 256),
             return enc, hash
         except ValueError:
             pass
