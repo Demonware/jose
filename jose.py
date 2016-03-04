@@ -110,7 +110,8 @@ def deserialize_compact(jwt):
 
 
 def encrypt(claims, jwk, adata='', add_header=None, alg='RSA-OAEP',
-        enc='A128CBC-HS256', rng=get_random_bytes, compression=None):
+        enc='A128CBC-HS256', rng=get_random_bytes, compression=None,
+        dir_key=None):
     """ Encrypts the given claims and produces a :class:`~jose.JWE`
 
     :param claims: A `dict` representing the claims for this
@@ -155,27 +156,37 @@ def encrypt(claims, jwk, adata='', add_header=None, alg='RSA-OAEP',
             (compress, _) = COMPRESSION[compression]
         except KeyError:
             raise Error(
-                'Unsupported compression algorithm: {}'.format(compression))
-        plaintext = compress(plaintext)
-
-    # body encryption/hash
-    ((cipher, _), key_size), ((hash_fn, _), hash_mod) = JWA[enc]
-    iv = rng(AES.block_size)
-    encryption_key = rng(hash_mod.digest_size)
-
-    ciphertext = cipher(plaintext, encryption_key[-hash_mod.digest_size/2:], iv)
-    hash = hash_fn(_jwe_hash_str(ciphertext, iv, adata),
-            encryption_key[:-hash_mod.digest_size/2], hash_mod)
-
-    # cek encryption
+                    'Unsupported compression algorithm: {}'.format(compression))
+            plaintext = compress(plaintext)
+    
     alg = header['alg']
-    if (alg == "A128CBC" or alg == "A192CBC" or alg == "A256CBC"):
-		(cipher, _), _ = JWA[alg]
-		encryption_key_ciphertext = cipher(encryption_key, jwk, iv)
-    else:
-		(cipher, _), _ = JWA[alg]
-		encryption_key_ciphertext = cipher(encryption_key, jwk)
+    if(alg == 'dir'):
+        # body encryption/hash
+        ((cipher, _), key_size), ((hash_fn, _), hash_mod) = JWA[enc]
+        iv = rng(AES.block_size)
+        # for Direct encryption, pre-shared symmetric key is used
+       
+        #CHECK SECOND VALUE 
+        ciphertext = cipher(plaintext, dir_key, iv)
+        hash = hash_fn(_jwe_hash_str(ciphertext, iv, adata),
+             dir_key, hash_mod)
 
+        # cek encryption
+        encryption_key_ciphertext = ''
+
+    else:
+        # body encryption/hash
+        ((cipher, _), key_size), ((hash_fn, _), hash_mod) = JWA[enc]
+        iv = rng(AES.block_size)
+        encryption_key = rng(hash_mod.digest_size)
+
+        ciphertext = cipher(plaintext, encryption_key[-hash_mod.digest_size/2:], iv)
+        hash = hash_fn(_jwe_hash_str(ciphertext, iv, adata),
+             encryption_key[:-hash_mod.digest_size/2], hash_mod)
+
+        # cek encryption
+        (cipher, _), _ = JWA[alg]
+        encryption_key_ciphertext = cipher(encryption_key, jwk)
 
     return JWE(*map(b64encode_url,
             (json_encode(header),
@@ -184,8 +195,7 @@ def encrypt(claims, jwk, adata='', add_header=None, alg='RSA-OAEP',
             ciphertext,
             auth_tag(hash))))
 
-
-def decrypt(jwe, jwk, adata='', validate_claims=True, expiry_seconds=None):
+def decrypt(jwe, jwk, adata='', validate_claims=True, expiry_seconds=None, dir_key=None):
     """ Decrypts a deserialized :class:`~jose.JWE`
 
     :param jwe: An instance of :class:`~jose.JWE`
@@ -208,48 +218,81 @@ def decrypt(jwe, jwk, adata='', validate_claims=True, expiry_seconds=None):
         b64decode_url, jwe)
     header = json_decode(header)
 
-    # decrypt cek
+     
+
     alg = header['alg']
-    if (alg == "A128CBC" or alg == "A192CBC" or alg == "A256CBC"):
-        (_, decipher), _ = JWA[header['alg']]
-        encryption_key = decipher(encryption_key_ciphertext, jwk, iv)
-    else:	
+    if(alg == 'dir'):
+        # decrypt body
+        ((_, decipher), _), ((hash_fn, _), mod) = JWA[header['enc']]
+
+        version = header.get(_TEMP_VER_KEY)
+        if version:
+            plaintext = decipher(ciphertext, dir_key, iv)
+            hash = hash_fn(_jwe_hash_str(ciphertext, iv, adata, version),
+                    dir_key, mod=mod)
+        else:
+            plaintext = decipher(ciphertext, dir_key, iv)
+            hash = hash_fn(_jwe_hash_str(ciphertext, iv, adata, version),
+                    dir_key, mod=mod)
+
+        if not const_compare(auth_tag(hash), tag):
+            raise Error('Mismatched authentication tags')
+
+        if 'zip' in header:
+            try:
+                (_, decompress) = COMPRESSION[header['zip']]
+            except KeyError:
+                raise Error('Unsupported compression algorithm: {}'.format(
+                    header['zip']))
+
+            plaintext = decompress(plaintext)
+
+        claims = json_decode(plaintext)
+        try:
+            del claims[_TEMP_VER_KEY]
+        except KeyError:
+            # expected when decrypting legacy tokens
+            pass
+
+        _validate(claims, validate_claims, expiry_seconds)
+    else:
+        # decrypt cek
         (_, decipher), _ = JWA[header['alg']]
         encryption_key = decipher(encryption_key_ciphertext, jwk)
-		
-    # decrypt body
-    ((_, decipher), _), ((hash_fn, _), mod) = JWA[header['enc']]
 
-    version = header.get(_TEMP_VER_KEY)
-    if version:
-        plaintext = decipher(ciphertext, encryption_key[-mod.digest_size/2:], iv)
-        hash = hash_fn(_jwe_hash_str(ciphertext, iv, adata, version),
+        # decrypt body
+        ((_, decipher), _), ((hash_fn, _), mod) = JWA[header['enc']]
+
+        version = header.get(_TEMP_VER_KEY)
+        if version:
+                plaintext = decipher(ciphertext, encryption_key[-mod.digest_size/2:], iv)
+                hash = hash_fn(_jwe_hash_str(ciphertext, iv, adata, version),
                 encryption_key[:-mod.digest_size/2], mod=mod)
-    else:
-        plaintext = decipher(ciphertext, encryption_key[:-mod.digest_size], iv)
-        hash = hash_fn(_jwe_hash_str(ciphertext, iv, adata, version),
-            encryption_key[-mod.digest_size:], mod=mod)
+        else:
+            plaintext = decipher(ciphertext, encryption_key[:-mod.digest_size], iv)
+                hash = hash_fn(_jwe_hash_str(ciphertext, iv, adata, version),
+                        encryption_key[-mod.digest_size:], mod=mod)
 
-    if not const_compare(auth_tag(hash), tag):
-        raise Error('Mismatched authentication tags')
+         if not const_compare(auth_tag(hash), tag):
+             raise Error('Mismatched authentication tags')
 
-    if 'zip' in header:
-        try:
-            (_, decompress) = COMPRESSION[header['zip']]
-        except KeyError:
-            raise Error('Unsupported compression algorithm: {}'.format(
-                header['zip']))
+         if 'zip' in header:
+             try:
+                 (_, decompress) = COMPRESSION[header['zip']]
+             except KeyError:
+                 raise Error('Unsupported compression algorithm: {}'.format(
+                     header['zip']))
 
-        plaintext = decompress(plaintext)
+             plaintext = decompress(plaintext)
 
-    claims = json_decode(plaintext)
-    try:
-        del claims[_TEMP_VER_KEY]
-    except KeyError:
-        # expected when decrypting legacy tokens
-        pass
+         claims = json_decode(plaintext)
+         try:
+             del claims[_TEMP_VER_KEY]
+         except KeyError:
+             # expected when decrypting legacy tokens
+             pass
 
-    _validate(claims, validate_claims, expiry_seconds)
+         _validate(claims, validate_claims, expiry_seconds)
 
     return JWT(header, claims)
 
@@ -426,11 +469,13 @@ class _JWA(object):
         'RS384': ((rsa_sign, rsa_verify), SHA384),
         'RS512': ((rsa_sign, rsa_verify), SHA512),
         'RSA-OAEP': ((encrypt_oaep, decrypt_oaep), 2048),
-
+       
+         #'dir': ((_,_)_) 
         'A128CBC': ((encrypt_aescbc, decrypt_aescbc), 128),
         'A192CBC': ((encrypt_aescbc, decrypt_aescbc), 192),
         'A256CBC': ((encrypt_aescbc, decrypt_aescbc), 256),
     }
+
 
     def __getitem__(self, key):
         """ Derive implementation(s) from key
@@ -450,6 +495,8 @@ class _JWA(object):
 
         try:
             enc, hash = key.split('-')
+        'A192CBC': ((encrypt_aescbc, decrypt_aescbc), 192),
+        'A256CBC': ((encrypt_aescbc, decrypt_aescbc), 256),
             return enc, hash
         except ValueError:
             pass
