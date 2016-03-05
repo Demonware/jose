@@ -129,6 +129,7 @@ def encrypt(claims, jwk, adata='', add_header=None, alg='RSA-OAEP',
                 as output.
     :param compression: The compression algorithm to use. Currently supports
                 `'DEF'`.
+    :param dir_key: Symmetric key to be used when alg = "dir"
     :rtype: :class:`~jose.JWE`
     :raises: :class:`~jose.Error` if there is an error producing the JWE
     """
