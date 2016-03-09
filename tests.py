@@ -11,7 +11,7 @@ from Crypto.PublicKey import RSA
 from Crypto.Random import get_random_bytes
 
 import jose
-aes_128_key = "This is a key123"
+
 rsa_key = RSA.generate(2048)
 
 rsa_priv_key = {
