@@ -2,16 +2,16 @@ import logging
 logger = logging.getLogger(__name__)
 
 try:
-    from cjson import encode as json_encode, decode as json_decode
+    from cjson import encode as _json_encode, decode as json_decode
 except ImportError:  # pragma: nocover
     logger.warn('cjson not found, falling back to stdlib json')
-    from json import loads as json_decode, dumps as json_encode
+    from json import loads as json_decode, dumps as _json_encode
 
 import zlib
 import datetime
 
 from base64 import urlsafe_b64encode, urlsafe_b64decode
-from collections import namedtuple
+from collections import OrderedDict, namedtuple
 from copy import deepcopy
 from time import time
 from struct import pack
@@ -45,7 +45,6 @@ JWT = namedtuple('JWT',
         'header '
         'claims ')
 
-
 CLAIM_ISSUER = 'iss'
 CLAIM_SUBJECT = 'sub'
 CLAIM_AUDIENCE = 'aud'
@@ -54,10 +53,18 @@ CLAIM_NOT_BEFORE = 'nbf'
 CLAIM_ISSUED_AT = 'iat'
 CLAIM_JWT_ID = 'jti'
 
+HEADER_ALG = 'alg'
+HEADER_ENC = 'enc'
+HEADER_ZIP = 'zip'
+HEADER_CRIT = 'crit'
+
 # these are temporary to allow graceful deprecation of legacy encrypted tokens.
 # these will be removed in v1.0
 _TEMP_VER_KEY = '__v'
 _TEMP_VER = 2
+
+JWE_REQUIRED_HEADERS = set((HEADER_ALG, HEADER_ENC))
+JWE_UNDERSTOOD_HEADERS = set((HEADER_ALG, HEADER_ENC, HEADER_ZIP, HEADER_CRIT))
 
 
 class Error(Exception):
@@ -97,8 +104,6 @@ def deserialize_compact(jwt):
     """
     parts = jwt.split('.')
 
-    # http://tools.ietf.org/html/
-    # draft-ietf-jose-json-web-encryption-23#section-9
     if len(parts) == 3:
         token_type = JWS
     elif len(parts) == 5:
@@ -107,6 +112,71 @@ def deserialize_compact(jwt):
         raise Error('Malformed JWT')
 
     return token_type(*parts)
+
+
+def json_encode(data):
+    return _json_encode(
+        OrderedDict(sorted(data.items(), key=lambda item: item[0]))
+    )
+
+
+def _generate_encryption_keys(alg, rng):
+    (_, key_len), _ = JWA[alg]
+    num_bytes = key_len / 8
+    mac_key = rng(num_bytes)
+    enc_key = rng(num_bytes)
+    return mac_key, enc_key
+
+
+def _parse_encryption_keys(key, alg):
+    (_, key_len), _ = JWA[alg]
+    num_bytes = key_len / 8
+    mac_key = key[:num_bytes]
+    enc_key = key[num_bytes:]
+    return mac_key, enc_key
+
+
+def _encrypt_key(cek, jwk, alg):
+    (cipher, _), _ = JWA[alg]
+    return cipher(cek, jwk)
+
+
+def _decrypt_key(encrypted_key, jwk, alg):
+    (_, decipher), _ = JWA[alg]
+    return decipher(encrypted_key, jwk)
+
+
+def _generate_iv(enc, rng):
+    # TODO: This would work only for A128CBC, A192CBC and A256CBC algorithms
+    # which are only algorithms supported ATM. In case if new algorithms
+    # support added this function should be revised.
+    return rng(AES.block_size)
+
+
+def _generate_authentication_tag(key, protected_header, ciphertext, iv, alg):
+    # http://tools.ietf.org/html/rfc7516#section-2
+    # Additional Authenticated Data (aad)
+    aad = b64encode_url(protected_header)
+
+    _, ((cipher, _), mod) = JWA[alg]
+
+    # http://tools.ietf.org/html/rfc7518#section-5.2.2.1
+    # Number of bits in AAD expressed as a 64-bit unsigned big-endian integer
+    al = pack("!Q", 8 * len(aad))
+    chunks = (aad, iv, ciphertext, al)
+
+    return cipher(chunks, key, mod)[:len(key)]
+
+
+def _verify_header(header):
+    for key in JWE_REQUIRED_HEADERS:
+        if key not in header:
+            return False
+    if HEADER_CRIT in header:
+        for crit in header[HEADER_CRIT]:
+            if crit not in JWE_UNDERSTOOD_HEADERS:
+                return False
+    return True
 
 
 def encrypt(claims, jwk, adata='', add_header=None, alg='RSA-OAEP',
@@ -140,7 +210,7 @@ def encrypt(claims, jwk, adata='', add_header=None, alg='RSA-OAEP',
     claims[_TEMP_VER_KEY] = _TEMP_VER
 
     header = dict((add_header or {}).items() + [
-        ('enc', enc), ('alg', alg)])
+        (HEADER_ENC, enc), (HEADER_ALG, alg)])
 
     # promote the temp key to the header
     assert _TEMP_VER_KEY not in header
@@ -150,7 +220,7 @@ def encrypt(claims, jwk, adata='', add_header=None, alg='RSA-OAEP',
 
     # compress (if required)
     if compression is not None:
-        header['zip'] = compression
+        header[HEADER_ZIP] = compression
         try:
             (compress, _) = COMPRESSION[compression]
         except KeyError:
@@ -179,7 +249,71 @@ def encrypt(claims, jwk, adata='', add_header=None, alg='RSA-OAEP',
             auth_tag(hash))))
 
 
-def decrypt(jwe, jwk, adata='', validate_claims=True, expiry_seconds=None):
+def spec_compliant_encrypt(claims, jwk, add_header=None, alg='RSA-OAEP',
+                           enc='A128CBC-HS256', rng=get_random_bytes):
+    """ Encrypts the given claims and produces a :class:`~jose.JWE`
+
+    :param claims: A `dict` representing the claims for this
+                   :class:`~jose.JWE`.
+    :param jwk: A `dict` representing the JWK to be used for encryption of
+                the CEK. This parameter is algorithm-specific.
+    :param add_header: Additional items to be added to the header. Additional
+                       headers *will* be authenticated.
+    :param alg: The algorithm to use for CEK encryption
+    :param enc: The algorithm to use for claims encryption
+    :param rng: Random number generator. A string of random bytes is expected
+                as output.
+    : param compression: The compression algorithm to use. Currently supports
+                `'DEF'`.
+    :rtype: :class:`~jose.JWE`
+    :raises: :class:`~jose.Error` if there is an error producing the JWE
+    """
+    # We need 5 components for JWE token
+    # 1. Generate header
+    header = dict((add_header or {}).items() + [(HEADER_ENC, enc),
+                                                (HEADER_ALG, alg)])
+    protected_header = json_encode(header)
+
+    # 2. Generate CEK
+    mac_key, enc_key = _generate_encryption_keys(enc, rng)
+    encrypted_key = _encrypt_key(mac_key + enc_key, jwk, alg)
+
+    # 3. Generate Initialization Vector
+    iv = _generate_iv(enc, rng)
+
+    # 4. Generate payload
+    plaintext = json_encode(claims)
+    # Compress if needed
+    if HEADER_ZIP in header:
+        try:
+            (compression_func, _) = COMPRESSION[header[HEADER_ZIP]]
+        except KeyError:
+            raise Error(
+                'Unsupported compression algorithm: {}'.format(header[HEADER_ZIP]))
+        M = compression_func(plaintext)
+    else:
+        M = plaintext
+
+    # Encrypt payload
+    ((cipher, _), key_len), _ = JWA[enc]
+    ciphertext = cipher(M, enc_key, iv)
+
+    # 5. Generate authentication tag
+    authentication_tag = _generate_authentication_tag(
+        mac_key, protected_header, ciphertext, iv, enc
+    )
+
+    return JWE(
+        *map(
+            b64encode_url,
+            (protected_header, encrypted_key, iv, ciphertext,
+             authentication_tag)
+        )
+    )
+
+
+def legacy_decrypt(jwe, jwk, adata='', validate_claims=True,
+                   expiry_seconds=None):
     """ Decrypts a deserialized :class:`~jose.JWE`
 
     :param jwe: An instance of :class:`~jose.JWE`
@@ -198,20 +332,23 @@ def decrypt(jwe, jwk, adata='', validate_claims=True, expiry_seconds=None):
     :raises: :class:`~jose.NotYetValid` if the JWT is not yet valid
     :raises: :class:`~jose.Error` if there is an error decrypting the JWE
     """
-    header, encryption_key_ciphertext, iv, ciphertext, tag = map(
+    protected_header, encrypted_key, iv, ciphertext, authentication_tag = map(
         b64decode_url, jwe)
-    header = json_decode(header)
+    header = json_decode(protected_header)
+
+    alg = header[HEADER_ALG]
+    enc = header[HEADER_ENC]
 
     # decrypt cek
-    (_, decipher), _ = JWA[header['alg']]
-    encryption_key = decipher(encryption_key_ciphertext, jwk)
+    encryption_key = _decrypt_key(encrypted_key, jwk, alg)
 
     # decrypt body
-    ((_, decipher), _), ((hash_fn, _), mod) = JWA[header['enc']]
+    ((_, decipher), _), ((hash_fn, _), mod) = JWA[enc]
 
     version = header.get(_TEMP_VER_KEY)
     if version:
-        plaintext = decipher(ciphertext, encryption_key[-mod.digest_size/2:], iv)
+        plaintext = decipher(ciphertext, encryption_key[-mod.digest_size/2:],
+                             iv)
         hash = hash_fn(_jwe_hash_str(ciphertext, iv, adata, version),
                 encryption_key[:-mod.digest_size/2], mod=mod)
     else:
@@ -219,15 +356,15 @@ def decrypt(jwe, jwk, adata='', validate_claims=True, expiry_seconds=None):
         hash = hash_fn(_jwe_hash_str(ciphertext, iv, adata, version),
             encryption_key[-mod.digest_size:], mod=mod)
 
-    if not const_compare(auth_tag(hash), tag):
+    if not const_compare(auth_tag(hash), authentication_tag):
         raise Error('Mismatched authentication tags')
 
-    if 'zip' in header:
+    if HEADER_ZIP in header:
         try:
-            (_, decompress) = COMPRESSION[header['zip']]
+            (_, decompress) = COMPRESSION[header[HEADER_ZIP]]
         except KeyError:
             raise Error('Unsupported compression algorithm: {}'.format(
-                header['zip']))
+                header[HEADER_ZIP]))
 
         plaintext = decompress(plaintext)
 
@@ -241,6 +378,79 @@ def decrypt(jwe, jwk, adata='', validate_claims=True, expiry_seconds=None):
     _validate(claims, validate_claims, expiry_seconds)
 
     return JWT(header, claims)
+
+
+def spec_compliant_decrypt(jwe, jwk, validate_claims=True,
+                           expiry_seconds=None):
+    """ Decrypts a deserialized :class:`~jose.JWE`
+
+    :param jwe: An instance of :class:`~jose.JWE`
+    :param jwk: A `dict` representing the JWK required to decrypt the content
+                of the :class:`~jose.JWE`.
+    :param validate_claims: A `bool` indicating whether or not the `exp`, `iat`
+                            and `nbf` claims should be validated. Defaults to
+                            `True`.
+    :param expiry_seconds: An `int` containing the JWT expiry in seconds, used
+                           when evaluating the `iat` claim. Defaults to `None`,
+                           which disables `iat` claim validation.
+    :rtype: :class:`~jose.JWT`
+    :raises: :class:`~jose.Expired` if the JWT has expired
+    :raises: :class:`~jose.NotYetValid` if the JWT is not yet valid
+    :raises: :class:`~jose.Error` if there is an error decrypting the JWE
+    """
+    protected_header, encrypted_key, iv, ciphertext, authentication_tag = map(
+        b64decode_url, jwe
+    )
+    header = json_decode(protected_header)
+    if not _verify_header(header):
+        raise Error('Header is invalid')
+
+    alg = header[HEADER_ALG]
+    enc = header[HEADER_ENC]
+
+    # decrypt cek
+    encryption_key = _decrypt_key(encrypted_key, jwk, alg)
+    mac_key, enc_key = _parse_encryption_keys(encryption_key, enc)
+
+    # verify authentication tag
+    expected_tag = _generate_authentication_tag(
+        mac_key, json_encode(header), ciphertext, iv, enc
+    )
+    if not const_compare(expected_tag, authentication_tag):
+        raise Error('Mismatched authentication tags')
+
+    # decrypt body
+    ((_, decipher), _), _ = JWA[enc]
+    # http://tools.ietf.org/html/rfc7516#section-5.1 step 11
+    M = decipher(ciphertext, enc_key, iv)
+
+    if HEADER_ZIP in header:
+        try:
+            (_, decompress) = COMPRESSION[header[HEADER_ZIP]]
+        except KeyError:
+            raise Error('Unsupported compression algorithm: {}'.format(
+                header[HEADER_ZIP]))
+
+        plaintext = decompress(M)
+    else:
+        plaintext = M
+    claims = json_decode(plaintext)
+    _validate(claims, validate_claims, expiry_seconds)
+
+    return JWT(header, claims)
+
+
+def decrypt(*args, **kwargs):
+    """ Decrypts legacy or spec-compliant JOSE token.
+    First attempts to decrypt the token in a legacy mode
+    (https://tools.ietf.org/html/draft-ietf-oauth-json-web-token-19).
+    If it is not a valid legacy token then attempts to decrypt it in a
+    spec-compliant way (http://tools.ietf.org/html/rfc7519)
+    """
+    try:
+        return legacy_decrypt(*args, **kwargs)
+    except (Error, ValueError) as e:
+        return spec_compliant_decrypt(*args, **kwargs)
 
 
 def sign(claims, jwk, add_header=None, alg='HS256'):
@@ -257,7 +467,7 @@ def sign(claims, jwk, add_header=None, alg='HS256'):
     """
     (hash_fn, _), mod = JWA[alg]
 
-    header = dict((add_header or {}).items() + [('alg', alg)])
+    header = dict((add_header or {}).items() + [(HEADER_ALG, alg)])
     header, payload = map(b64encode_url, map(json_encode, (header, claims)))
 
     sig = b64encode_url(hash_fn(_jws_hash_str(header, payload), jwk['k'],
@@ -286,10 +496,10 @@ def verify(jws, jwk, alg, validate_claims=True, expiry_seconds=None):
     """
     header, payload, sig = map(b64decode_url, jws)
     header = json_decode(header)
-    if alg != header['alg']:
+    if alg != header[HEADER_ALG]:
         raise Error('Invalid algorithm')
 
-    (_, verify_fn), mod = JWA[header['alg']]
+    (_, verify_fn), mod = JWA[header[HEADER_ALG]]
 
     if not verify_fn(_jws_hash_str(jws.header, jws.payload),
             jwk['k'], sig, mod=mod):
@@ -356,13 +566,19 @@ def decrypt_oaep(ciphertext, jwk):
 
 def hmac_sign(s, key, mod=SHA256):
     hmac = HMAC.new(key, digestmod=mod)
-    hmac.update(s)
+    if not isinstance(s, (tuple, list)):
+        s = (s,)
+    for item in s:
+        hmac.update(item)
     return hmac.digest()
 
 
 def hmac_verify(s, key, sig, mod=SHA256):
     hmac = HMAC.new(key, digestmod=mod)
-    hmac.update(s)
+    if not isinstance(s, (tuple, list)):
+        s = (s,)
+    for item in s:
+        hmac.update(item)
 
     if not const_compare(hmac.digest(), sig):
         return False
@@ -405,7 +621,7 @@ class _JWA(object):
     """ Represents the implemented algorithms
 
     A big TODO list can be found here:
-    http://tools.ietf.org/html/draft-ietf-jose-json-web-algorithms-24
+    http://tools.ietf.org/html/rfc7518
     """
     _impl = {
         'HS256': ((hmac_sign, hmac_verify), SHA256),
@@ -423,6 +639,12 @@ class _JWA(object):
 
     def __getitem__(self, key):
         """ Derive implementation(s) from key
+        If key is compond <encryption>(-|+)<hash> then it will return a tuple
+        of implementations.
+        Each implementation is a tuple in following format:
+        - for hash algorithms ((<sign function>, <verify function>), <mod>)
+        - for encryption algorithms ((<encrypt function>, <decrypt function>),
+          <key length>)
         """
         if key in self._impl:
             return self._impl[key]

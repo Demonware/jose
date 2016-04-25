@@ -7,6 +7,7 @@ from setuptools.command.bdist_rpm import bdist_rpm as _bdist_rpm
 here = os.path.abspath(os.path.dirname(__file__))
 REQUIRES = filter(lambda s: len(s) > 0,
         open(os.path.join(here, 'requirements.txt')).read().split('\n'))
+TESTS_REQUIRE = ['mock']
 pkg_name = 'jose'
 pyver = ''.join(('python', '.'.join(map(str, sys.version_info[:2]))))
 
@@ -43,13 +44,14 @@ if __name__ == '__main__':
         pkg_name = '-'.join((pyver.replace('.', ''), pkg_name))
 
     setup(name=pkg_name,
-        version='1.0.0',
+        version='1.1.0',
         author='Demian Brecht',
         author_email='dbrecht@demonware.net',
         py_modules=['jose'],
         url='https://github.com/Demonware/jose',
         description='An implementation of the JOSE draft',
         install_requires=REQUIRES,
+        tests_require=TESTS_REQUIRE,
         classifiers=[
             'Development Status :: 4 - Beta',
             'Intended Audience :: Developers',
