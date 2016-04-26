@@ -39,8 +39,9 @@ class bdist_rpm(_bdist_rpm):
 
         self.python = pyver
         if self.release is None:
-            self.release = '.'.join((os.environ.get('JOSE_RELEASE', '1'),
-                'demonware'))
+            self.release = '.'.join(
+                (os.environ.get('JOSE_RELEASE', '1'), 'demonware')
+            )
         _bdist_rpm.finalize_package_data(self)
 
 

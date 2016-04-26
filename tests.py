@@ -72,12 +72,12 @@ def legacy_encrypt(claims, jwk, adata=six.b(''), add_header=None,
     (cipher, _), _ = jose.JWA[alg]
     encryption_key_ciphertext = cipher(encryption_key, jwk)
 
-    return jose.JWE(*map(jose.b64encode_url,
-            (jose.json_encode(header),
-            encryption_key_ciphertext,
-            iv,
-            ciphertext,
-            jose.auth_tag(hash))))
+    jwe_components = (
+        jose.json_encode(header), encryption_key_ciphertext, iv, ciphertext,
+        jose.auth_tag(hash)
+    )
+
+    return jose.JWE(*map(jose.b64encode_url, jwe_components))
 
 
 class TestLegacyDecrypt(unittest.TestCase):
@@ -153,8 +153,9 @@ class TestJWE(unittest.TestCase):
         add_header = {'foo': 'bar'}
 
         for (alg, jwk), enc in product(self.algs, self.encs):
-            et = jose.serialize_compact(jose.encrypt(claims, rsa_pub_key,
-                add_header=add_header))
+            et = jose.serialize_compact(
+                jose.encrypt(claims, rsa_pub_key, add_header=add_header)
+            )
             jwt = jose.decrypt(jose.deserialize_compact(et), rsa_priv_key)
 
             self.assertEqual(jwt.header['foo'], add_header['foo'])
@@ -162,15 +163,19 @@ class TestJWE(unittest.TestCase):
     def test_jwe_adata(self):
         adata = six.b('42')
         for (alg, jwk), enc in product(self.algs, self.encs):
-            et = jose.serialize_compact(jose.encrypt(claims, rsa_pub_key,
-                adata=adata))
-            jwt = jose.decrypt(jose.deserialize_compact(et), rsa_priv_key,
-                    adata=adata)
+            et = jose.serialize_compact(
+                jose.encrypt(claims, rsa_pub_key, adata=adata)
+            )
+            jwt = jose.decrypt(
+                jose.deserialize_compact(et), rsa_priv_key,
+                adata=adata
+            )
 
             # make sure signaures don't match when adata isn't passed in
             try:
-                hdr, dt = jose.decrypt(jose.deserialize_compact(et),
-                    rsa_priv_key)
+                hdr, dt = jose.decrypt(
+                    jose.deserialize_compact(et), rsa_priv_key
+                )
                 self.fail()
             except jose.Error as e:
                 self.assertEqual(e.message, 'Mismatched authentication tags')
@@ -210,8 +215,9 @@ class TestJWE(unittest.TestCase):
         claims = {jose.CLAIM_ISSUED_AT: int(time()) - 15}
         et = jose.serialize_compact(jose.encrypt(claims, rsa_pub_key))
 
-        jose.decrypt(jose.deserialize_compact(et), rsa_priv_key,
-            expiry_seconds=20)
+        jose.decrypt(
+            jose.deserialize_compact(et), rsa_priv_key, expiry_seconds=20
+        )
 
     def test_jwe_expired_error_with_iat_claim(self):
         expiry_seconds = 10
@@ -219,8 +225,10 @@ class TestJWE(unittest.TestCase):
         et = jose.serialize_compact(jose.encrypt(claims, rsa_pub_key))
 
         try:
-            jose.decrypt(jose.deserialize_compact(et), rsa_priv_key,
-                expiry_seconds=expiry_seconds)
+            jose.decrypt(
+                jose.deserialize_compact(et), rsa_priv_key,
+                expiry_seconds=expiry_seconds
+            )
         except jose.Expired as e:
             expiration_time = claims[jose.CLAIM_ISSUED_AT] + expiry_seconds
             self.assertEquals(
@@ -256,8 +264,9 @@ class TestJWE(unittest.TestCase):
     def test_jwe_ignores_expired_token_if_validate_claims_is_false(self):
         claims = {jose.CLAIM_EXPIRATION_TIME: int(time()) - 5}
         et = jose.serialize_compact(jose.encrypt(claims, rsa_pub_key))
-        jose.decrypt(jose.deserialize_compact(et), rsa_priv_key,
-            validate_claims=False)
+        jose.decrypt(
+            jose.deserialize_compact(et), rsa_priv_key, validate_claims=False
+        )
 
     def test_format_timestamp(self):
         self.assertEquals(
@@ -274,12 +283,14 @@ class TestJWE(unittest.TestCase):
         jwe = jose.serialize_compact(jose.encrypt(local_claims, rsa_pub_key))
         _, _, _, uncompressed_ciphertext, _ = jwe.split(six.b('.'))
 
-        jwe = jose.serialize_compact(jose.encrypt(local_claims, rsa_pub_key,
-            compression='DEF'))
+        jwe = jose.serialize_compact(
+            jose.encrypt(local_claims, rsa_pub_key, compression='DEF')
+        )
         _, _, _, compressed_ciphertext, _ = jwe.split(six.b('.'))
 
-        self.assertTrue(len(compressed_ciphertext) <
-                len(uncompressed_ciphertext))
+        self.assertTrue(
+            len(compressed_ciphertext) < len(uncompressed_ciphertext)
+        )
 
         jwt = jose.decrypt(jose.deserialize_compact(jwe), rsa_priv_key)
         self.assertEqual(jwt.claims, local_claims)
@@ -324,8 +335,9 @@ class TestJWS(unittest.TestCase):
         algs = ('RS256', 'RS384', 'RS512')
 
         for alg in algs:
-            st = jose.serialize_compact(jose.sign(claims, rsa_priv_key,
-                alg=alg))
+            st = jose.serialize_compact(
+                jose.sign(claims, rsa_priv_key, alg=alg)
+            )
             jwt = jose.verify(jose.deserialize_compact(st), rsa_pub_key, alg)
             self.assertEqual(jwt.claims, claims)
 
@@ -387,10 +399,8 @@ class TestJWA(unittest.TestCase):
 
         self.assertEqual(jose.JWA['HS256'], 'HS256')
         self.assertEqual(jose.JWA['RSA-OAEP'], 'RSA-OAEP')
-        self.assertEqual(jose.JWA['A128CBC-HS256'],
-                ('A128CBC', 'HS256'))
-        self.assertEqual(jose.JWA['A128CBC+HS256'],
-                ('A128CBC', 'HS256'))
+        self.assertEqual(jose.JWA['A128CBC-HS256'], ('A128CBC', 'HS256'))
+        self.assertEqual(jose.JWA['A128CBC+HS256'], ('A128CBC', 'HS256'))
 
         jose._JWA._impl = impl
 
@@ -400,7 +410,3 @@ class TestJWA(unittest.TestCase):
             self.fail()
         except jose.Error as e:
             self.assertTrue(e.message.startswith('Unsupported'))
-
-
-if __name__ == '__main__':
-    unittest.main()

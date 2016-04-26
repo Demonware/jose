@@ -23,24 +23,9 @@ logger = logging.getLogger(__name__)
 __all__ = ['encrypt', 'decrypt', 'sign', 'verify']
 
 
-# XXX: The attribute order is IMPORTANT in the following namedtuple
-# definitions. DO NOT change them, unless you really know what you're doing.
-
-JWE = namedtuple('JWE',
-    'header '
-    'cek '
-    'iv '
-    'ciphertext '
-    'tag ')
-
-JWS = namedtuple('JWS',
-        'header '
-        'payload '
-        'signature ')
-
-JWT = namedtuple('JWT',
-        'header '
-        'claims ')
+JWE = namedtuple('JWE', ['header', 'cek', 'iv', 'ciphertext', 'tag'])
+JWS = namedtuple('JWS', ['header', 'payload', 'signature'])
+JWT = namedtuple('JWT', ['header', 'claims'])
 
 
 CLAIM_ISSUER = 'iss'
@@ -223,8 +208,10 @@ def decrypt(jwe, jwk, adata=six.b(''), validate_claims=True,
         )
     else:
         plaintext = decipher(ciphertext, encryption_key[:-mod.digest_size], iv)
-        hash = hash_fn(_jwe_hash_str(ciphertext, iv, adata, version),
-            encryption_key[-mod.digest_size:], mod=mod)
+        hash = hash_fn(
+            _jwe_hash_str(ciphertext, iv, adata, version),
+            encryption_key[-mod.digest_size:], mod=mod
+        )
 
     if not const_compare(auth_tag(hash), tag):
         raise Error('Mismatched authentication tags')
