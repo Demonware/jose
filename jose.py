@@ -1,5 +1,6 @@
 import binascii
 import datetime
+import json
 import logging
 import six
 import zlib
@@ -7,7 +8,6 @@ import zlib
 from base64 import urlsafe_b64encode, urlsafe_b64decode
 from collections import namedtuple
 from copy import deepcopy
-from json import loads as json_decode, dumps as json_encode
 from struct import pack
 from time import time
 
@@ -137,15 +137,13 @@ def encrypt(claims, jwk, adata=six.b(''), add_header=None, alg='RSA-OAEP',
     assert _TEMP_VER_KEY not in claims
     claims[_TEMP_VER_KEY] = _TEMP_VER
 
-    header = dict(
-        list((add_header or {}).items()) + [('enc', enc), ('alg', alg)]
-    )
+    header = dict(add_header or {}, enc=enc, alg=alg)
 
     # promote the temp key to the header
     assert _TEMP_VER_KEY not in header
     header[_TEMP_VER_KEY] = claims[_TEMP_VER_KEY]
 
-    plaintext = six.b(json_encode(claims))
+    plaintext = json_encode(claims)
 
     # compress (if required)
     if compression is not None:
@@ -205,7 +203,7 @@ def decrypt(jwe, jwk, adata=six.b(''), validate_claims=True,
     header, encryption_key_ciphertext, iv, ciphertext, tag = map(
         b64decode_url, jwe
     )
-    header = json_decode(header.decode())
+    header = json_decode(header)
 
     # decrypt cek
     (_, decipher), _ = JWA[header['alg']]
@@ -240,7 +238,7 @@ def decrypt(jwe, jwk, adata=six.b(''), validate_claims=True,
 
         plaintext = decompress(plaintext)
 
-    claims = json_decode(plaintext.decode())
+    claims = json_decode(plaintext)
     try:
         del claims[_TEMP_VER_KEY]
     except KeyError:
@@ -265,8 +263,7 @@ def sign(claims, jwk, add_header=None, alg='HS256'):
     :rtype: :class:`~jose.JWS`
     """
     (hash_fn, _), mod = JWA[alg]
-
-    header = dict(list((add_header or {}).items()) + [('alg', alg)])
+    header = dict(add_header or {}, alg=alg)
     header, payload = map(b64encode_url, map(json_encode, (header, claims)))
 
     sig = b64encode_url(
@@ -295,7 +292,7 @@ def verify(jws, jwk, alg, validate_claims=True, expiry_seconds=None):
     :raises: :class:`~jose.Error` if there is an error decrypting the JWE
     """
     header, payload, sig = map(b64decode_url, jws)
-    header = json_decode(header.decode())
+    header = json_decode(header)
     if alg != header['alg']:
         raise Error('Invalid algorithm')
 
@@ -306,7 +303,7 @@ def verify(jws, jwk, alg, validate_claims=True, expiry_seconds=None):
     ):
         raise Error('Mismatched signatures')
 
-    claims = json_decode(b64decode_url(jws.payload).decode())
+    claims = json_decode(b64decode_url(jws.payload))
     _validate(claims, validate_claims, expiry_seconds)
 
     return JWT(header, claims)
@@ -326,22 +323,21 @@ def b64encode_url(istr):
     """ JWT Tokens may be truncated without the usual trailing padding '='
         symbols. Compensate by padding to the nearest 4 bytes.
     """
-    return urlsafe_b64encode(encode_safe(istr)).rstrip(six.b('='))
+    return urlsafe_b64encode(istr).rstrip(six.b('='))
 
 
-if six.PY3:
-    def encode_safe(istr, encoding='utf8'):
-        if not isinstance(istr, bytes):
-            return bytes(istr, encoding=encoding)
-        return istr
-else:
-    def encode_safe(istr, encoding='utf8'):
-        try:
-            return istr.encode(encoding)
-        except UnicodeDecodeError:
-            # this will fail if istr is already encoded
-            pass
-        return istr
+def json_encode(x):
+    """
+    Dict -> Binary
+    """
+    return json.dumps(x).encode()
+
+
+def json_decode(x):
+    """
+    Binary -> Dict
+    """
+    return json.loads(x.decode())
 
 
 def auth_tag(hmac):
@@ -355,12 +351,16 @@ def pad_pkcs7(s):
     return s + (six.int2byte(sz) * sz)
 
 
-if six.PY3:
-    def unpad_pkcs7(s):
-        return s[:-s[-1]]
+if six.PY2:
+    def _ord(x):
+        return ord(x)
 else:
-    def unpad_pkcs7(s):
-        return s[:-ord(s[-1])]
+    def _ord(x):
+        return x
+
+
+def unpad_pkcs7(s):
+    return s[:-_ord(s[-1])]
 
 
 def encrypt_oaep(plaintext, jwk):
@@ -411,24 +411,14 @@ def decrypt_aescbc(ciphertext, key, iv):
     return unpad_pkcs7(AES.new(key, AES.MODE_CBC, iv).decrypt(ciphertext))
 
 
-if six.PY3:
-    def const_compare(stra, strb):
-        if len(stra) != len(strb):
-            return False
+def const_compare(stra, strb):
+    if len(stra) != len(strb):
+        return False
 
-        res = 0
-        for a, b in zip(stra, strb):
-            res |= a ^ b
-        return res == 0
-else:
-    def const_compare(stra, strb):
-        if len(stra) != len(strb):
-            return False
-
-        res = 0
-        for a, b in zip(stra, strb):
-            res |= ord(a) ^ ord(b)
-        return res == 0
+    res = 0
+    for a, b in zip(stra, strb):
+        res |= _ord(a) ^ _ord(b)
+    return res == 0
 
 
 class _JWA(object):

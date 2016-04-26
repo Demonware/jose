@@ -22,17 +22,13 @@ rsa_pub_key = {
     'k': rsa_key.publickey().exportKey('PEM'),
 }
 
-claims = {'john': 'cleese'}
+claims = {'john': u'cleese\u20ac'}
 
 
 def legacy_encrypt(claims, jwk, adata=six.b(''), add_header=None,
                    alg='RSA-OAEP', enc='A128CBC-HS256', rng=get_random_bytes,
                    compression=None, version=None):
-    # see https://github.com/Demonware/jose/pull/3/files
-
-    header = dict(
-        list((add_header or {}).items()) + [('enc', enc), ('alg', alg)]
-    )
+    header = dict(add_header or {}, enc=enc, alg=alg)
 
     if version == 1:
         claims = deepcopy(claims)
@@ -43,7 +39,7 @@ def legacy_encrypt(claims, jwk, adata=six.b(''), add_header=None,
         assert jose._TEMP_VER_KEY not in header
         header[jose._TEMP_VER_KEY] = version
 
-    plaintext = six.b(jose.json_encode(claims))
+    plaintext = jose.json_encode(claims)
 
     # compress (if required)
     if compression is not None:
