@@ -460,9 +460,9 @@ def sign(claims, jwk, add_header=None, alg='HS256'):
                    :class:`~jose.JWS`.
     :param jwk: A `dict` representing the JWK to be used for signing of the
                 :class:`~jose.JWS`. This parameter is algorithm-specific.
-    :parameter add_header: Additional items to be added to the header.
+    :param add_header: Additional items to be added to the header.
                            Additional headers *will* be authenticated.
-    :parameter alg: The algorithm to use to produce the signature.
+    :param alg: The algorithm to use to produce the signature.
     :rtype: :class:`~jose.JWS`
     """
     (hash_fn, _), mod = JWA[alg]
