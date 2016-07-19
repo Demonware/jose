@@ -449,6 +449,11 @@ def decrypt(*args, **kwargs):
     """
     try:
         return legacy_decrypt(*args, **kwargs)
+    except (NotYetValid, Expired) as e:
+        # these should be raised immediately.
+        # The token has been decrypted successfully to get to here.
+        # decrypting using `legacy_decrypt` will not help things.
+        raise e
     except (Error, ValueError) as e:
         return spec_compliant_decrypt(*args, **kwargs)
 
