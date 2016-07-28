@@ -186,7 +186,7 @@ class TestJWE(unittest.TestCase):
         except jose.Error as e:
             pass
 
-        self.assertEquals(
+        self.assertEqual(
             e.args[0],
             'Unable to decode base64: Incorrect padding'
         )
@@ -206,7 +206,7 @@ class TestJWE(unittest.TestCase):
         except jose.Expired as e:
             pass
 
-        self.assertEquals(
+        self.assertEqual(
             e.args[0],
             'Token expired at {}'.format(
                 jose._format_timestamp(claims[jose.CLAIM_EXPIRATION_TIME])
@@ -233,7 +233,7 @@ class TestJWE(unittest.TestCase):
             pass
 
         expiration_time = claims[jose.CLAIM_ISSUED_AT] + expiry_seconds
-        self.assertEquals(
+        self.assertEqual(
             e.args[0],
             'Token expired at {}'.format(
                 jose._format_timestamp(expiration_time)
@@ -255,7 +255,7 @@ class TestJWE(unittest.TestCase):
         except jose.NotYetValid as e:
             pass
 
-        self.assertEquals(
+        self.assertEqual(
             e.args[0],
             'Token not valid until {}'.format(
                 jose._format_timestamp(claims[jose.CLAIM_NOT_BEFORE])
@@ -269,7 +269,7 @@ class TestJWE(unittest.TestCase):
             validate_claims=False)
 
     def test_format_timestamp(self):
-        self.assertEquals(
+        self.assertEqual(
             jose._format_timestamp(1403054056),
             '2014-06-18T01:14:16Z'
         )
@@ -366,7 +366,7 @@ class TestSpecCompliantJWE(unittest.TestCase):
         except jose.Error as e:
             pass
 
-        self.assertEquals(
+        self.assertEqual(
             e.args[0],
             'Unable to decode base64: Incorrect padding'
         )
@@ -386,7 +386,7 @@ class TestSpecCompliantJWE(unittest.TestCase):
         except jose.Expired as e:
             pass
 
-        self.assertEquals(
+        self.assertEqual(
             e.args[0],
             'Token expired at {}'.format(
                 jose._format_timestamp(claims[jose.CLAIM_EXPIRATION_TIME])
@@ -413,7 +413,7 @@ class TestSpecCompliantJWE(unittest.TestCase):
             pass
 
         expiration_time = claims[jose.CLAIM_ISSUED_AT] + expiry_seconds
-        self.assertEquals(
+        self.assertEqual(
             e.args[0],
             'Token expired at {}'.format(
                 jose._format_timestamp(expiration_time)
@@ -435,7 +435,7 @@ class TestSpecCompliantJWE(unittest.TestCase):
         except jose.NotYetValid as e:
             pass
 
-        self.assertEquals(
+        self.assertEqual(
             e.args[0],
             'Token not valid until {}'.format(
                 jose._format_timestamp(claims[jose.CLAIM_NOT_BEFORE])
@@ -449,7 +449,7 @@ class TestSpecCompliantJWE(unittest.TestCase):
             validate_claims=False)
 
     def test_format_timestamp(self):
-        self.assertEquals(
+        self.assertEqual(
             jose._format_timestamp(1403054056),
             '2014-06-18T01:14:16Z'
         )
@@ -619,6 +619,81 @@ class TestDecryptCompatibility(unittest.TestCase):
         }
         self.assertEqual(jwt.header, expected_header)
 
+    def test_jwe_decrypt_compliant_incorrect_jwk(self):
+        jwk_for_decrypt = {'k': RSA.generate(2048).exportKey('PEM')}
+
+        legacy_patch = mock.patch.object(
+            jose, 'legacy_decrypt', wraps=jose.legacy_decrypt
+        )
+        spec_patch = mock.patch.object(
+            jose, 'spec_compliant_decrypt', wraps=jose.spec_compliant_decrypt
+        )
+        with legacy_patch as legacy_mock, spec_patch as spec_mock:
+            with self.assertRaises(jose.Error) as decryption_error:
+                jose.decrypt(
+                    jose.deserialize_compact(SPEC_COMPLIANT_TOKEN),
+                    jwk_for_decrypt)
+
+        self.assertEqual(legacy_mock.call_count, 1)
+        self.assertEqual(spec_mock.call_count, 1)
+        self.assertEqual(decryption_error.exception.message,
+                          "Incorrect decryption.")
+
+    def test_jwe_decrypt_compliant_expiry(self):
+        expiry_seconds = 10
+        claims = {jose.CLAIM_ISSUED_AT: int(time()) - 15}
+
+        jwe = jose.spec_compliant_encrypt(claims, rsa_pub_key)
+
+        legacy_patch = mock.patch.object(
+            jose, 'legacy_decrypt', wraps=jose.legacy_decrypt
+        )
+        spec_patch = mock.patch.object(
+            jose, 'spec_compliant_decrypt', wraps=jose.spec_compliant_decrypt
+        )
+        with legacy_patch as legacy_mock, spec_patch as spec_mock:
+            with self.assertRaises(jose.Expired) as expiry_error:
+                jose.decrypt(jwe, rsa_priv_key, expiry_seconds=expiry_seconds)
+
+        expiration_time = claims[jose.CLAIM_ISSUED_AT] + expiry_seconds
+
+        # when the error is expiry, we should not fall back to legacy.
+        self.assertEqual(legacy_mock.call_count, 1)
+        self.assertEqual(spec_mock.call_count, 1)
+        self.assertEqual(
+            expiry_error.exception.message,
+            'Token expired at {}'.format(
+                jose._format_timestamp(expiration_time)
+            )
+        )
+
+    def test_jwe_decrypt_compliant_not_before(self):
+        # not valid for another hour.
+        claim_not_before = int(time()) + 3600
+        claims = {jose.CLAIM_NOT_BEFORE: claim_not_before}
+
+        jwe = jose.spec_compliant_encrypt(claims, rsa_pub_key)
+
+        legacy_patch = mock.patch.object(
+            jose, 'legacy_decrypt', wraps=jose.legacy_decrypt
+        )
+        spec_patch = mock.patch.object(
+            jose, 'spec_compliant_decrypt', wraps=jose.spec_compliant_decrypt
+        )
+        with legacy_patch as legacy_mock, spec_patch as spec_mock:
+            with self.assertRaises(jose.NotYetValid) as not_valid_error:
+                jose.decrypt(jwe, rsa_priv_key)
+
+        # when the error is expiry, we should not fall back to legacy.
+        self.assertEqual(legacy_mock.call_count, 1)
+        self.assertEqual(spec_mock.call_count, 1)
+        self.assertEqual(
+            not_valid_error.exception.message,
+            'Token not valid until {}'.format(
+                jose._format_timestamp(claim_not_before)
+            )
+        )
+
     def test_jwe_decrypt_legacy_v1(self):
         jwk = {'k': PRIVATE_KEY}
         legacy_patch = mock.patch.object(
@@ -639,6 +714,192 @@ class TestDecryptCompatibility(unittest.TestCase):
             '__v': 1
         }
         self.assertEqual(jwt.header, expected_header)
+
+    def test_jwe_decrypt_legacy_v1_expiry(self):
+        expiry_seconds = 10
+        claims = {jose.CLAIM_ISSUED_AT: int(time()) - 15}
+
+        jwe = jose.encrypt(claims, rsa_pub_key)
+
+        legacy_patch = mock.patch.object(
+            jose, 'legacy_decrypt', wraps=jose.legacy_decrypt
+        )
+        spec_patch = mock.patch.object(
+            jose, 'spec_compliant_decrypt', wraps=jose.spec_compliant_decrypt
+        )
+        with legacy_patch as legacy_mock, spec_patch as spec_mock:
+            with self.assertRaises(jose.Expired) as expiry_error:
+                jose.decrypt(jwe, rsa_priv_key, expiry_seconds=expiry_seconds)
+
+        expiration_time = claims[jose.CLAIM_ISSUED_AT] + expiry_seconds
+
+        self.assertEqual(legacy_mock.call_count, 1)
+        self.assertEqual(spec_mock.call_count, 0)
+
+        self.assertEqual(
+            expiry_error.exception.message,
+            'Token expired at {}'.format(
+                jose._format_timestamp(expiration_time)
+            )
+        )
+
+    def test_jwe_decrypt_legacy_v1_not_yet_valid(self):
+        # not valid for another hour.
+        claim_not_before = int(time()) + 3600
+        claims = {jose.CLAIM_NOT_BEFORE: claim_not_before}
+
+        jwe = jose.encrypt(claims, rsa_pub_key)
+
+        legacy_patch = mock.patch.object(
+            jose, 'legacy_decrypt', wraps=jose.legacy_decrypt
+        )
+        spec_patch = mock.patch.object(
+            jose, 'spec_compliant_decrypt', wraps=jose.spec_compliant_decrypt
+        )
+        with legacy_patch as legacy_mock, spec_patch as spec_mock:
+            with self.assertRaises(jose.NotYetValid) as not_valid_error:
+                jose.decrypt(jwe, rsa_priv_key)
+
+        self.assertEqual(legacy_mock.call_count, 1)
+        self.assertEqual(spec_mock.call_count, 0)
+
+        self.assertEqual(
+            not_valid_error.exception.message,
+            'Token not valid until {}'.format(
+                jose._format_timestamp(claim_not_before)
+            )
+        )
+
+    def test_jwe_decrypt_legacy_v1_incorrect_jwk(self):
+        jwk_for_decrypt = {'k': RSA.generate(2048).exportKey('PEM')}
+
+        legacy_patch = mock.patch.object(
+            jose, 'legacy_decrypt', wraps=jose.legacy_decrypt
+        )
+        spec_patch = mock.patch.object(
+            jose, 'spec_compliant_decrypt', wraps=jose.spec_compliant_decrypt
+        )
+        with legacy_patch as legacy_mock, spec_patch as spec_mock:
+            with self.assertRaises(jose.Error) as decryption_error:
+                jose.decrypt(
+                    jose.deserialize_compact(LEGACY_V1_TOKEN),
+                    jwk_for_decrypt)
+
+        self.assertEqual(legacy_mock.call_count, 1)
+        self.assertEqual(spec_mock.call_count, 1)
+
+        self.assertEqual(decryption_error.exception.message,
+                          "Incorrect decryption.")
+
+    def test_jwe_decrypt_legacy_v1_without_temp_ver(self):
+        jwk = {'k': PRIVATE_KEY}
+
+        legacy_patch = mock.patch.object(
+            jose, 'legacy_decrypt', wraps=jose.legacy_decrypt
+        )
+        spec_patch = mock.patch.object(
+            jose, 'spec_compliant_decrypt', wraps=jose.spec_compliant_decrypt
+        )
+
+        legacy_legacy_temp_ver = jose.serialize_compact(
+            legacy_encrypt(claims, jwk)
+        )
+
+        with legacy_patch as legacy_mock, spec_patch as spec_mock:
+            jwt = jose.decrypt(
+                jose.deserialize_compact(legacy_legacy_temp_ver), jwk)
+
+        self.assertEqual(legacy_mock.call_count, 1)
+        self.assertEqual(spec_mock.call_count, 0)
+        self.assertEqual(jwt.claims, claims)
+        expected_header = {
+            'alg': 'RSA-OAEP',
+            'enc': 'A128CBC-HS256',
+        }
+        self.assertEqual(jwt.header, expected_header)
+        self.assertNotIn('__v', jwt.header)
+
+    def test_jwe_decrypt_legacy_v1_without_temp_ver_incorrect_jwk(self):
+        jwk_for_encrypt = {'k': PRIVATE_KEY}
+
+        legacy_legacy_temp_ver = jose.serialize_compact(
+            legacy_encrypt(claims, jwk_for_encrypt)
+        )
+
+        jwk_for_decrypt = {'k': RSA.generate(2048).exportKey('PEM')}
+
+        legacy_patch = mock.patch.object(
+            jose, 'legacy_decrypt', wraps=jose.legacy_decrypt
+        )
+        spec_patch = mock.patch.object(
+            jose, 'spec_compliant_decrypt', wraps=jose.spec_compliant_decrypt
+        )
+        with legacy_patch as legacy_mock, spec_patch as spec_mock:
+            with self.assertRaises(jose.Error) as decryption_error:
+                jose.decrypt(
+                    jose.deserialize_compact(legacy_legacy_temp_ver),
+                    jwk_for_decrypt)
+
+        self.assertEqual(legacy_mock.call_count, 1)
+        self.assertEqual(spec_mock.call_count, 1)
+
+        self.assertEqual(decryption_error.exception.message,
+                          "Incorrect decryption.")
+
+    def test_jwe_decrypt_legacy_v1_without_temp_var_expiry(self):
+        expiry_seconds = 10
+        claims = {jose.CLAIM_ISSUED_AT: int(time()) - 15}
+
+        jwe = legacy_encrypt(claims, rsa_pub_key)
+
+        legacy_patch = mock.patch.object(
+            jose, 'legacy_decrypt', wraps=jose.legacy_decrypt
+        )
+        spec_patch = mock.patch.object(
+            jose, 'spec_compliant_decrypt', wraps=jose.spec_compliant_decrypt
+        )
+        with legacy_patch as legacy_mock, spec_patch as spec_mock:
+            with self.assertRaises(jose.Expired) as expiry_error:
+                jose.decrypt(jwe, rsa_priv_key, expiry_seconds=expiry_seconds)
+
+        expiration_time = claims[jose.CLAIM_ISSUED_AT] + expiry_seconds
+
+        self.assertEqual(legacy_mock.call_count, 1)
+        self.assertEqual(spec_mock.call_count, 0)
+
+        self.assertEqual(
+            expiry_error.exception.message,
+            'Token expired at {}'.format(
+                jose._format_timestamp(expiration_time)
+            )
+        )
+
+    def test_jwe_decrypt_legacy_v1_without_temp_ver_not_yet_valid(self):
+        # not valid for another hour.
+        claim_not_before = int(time()) + 3600
+        claims = {jose.CLAIM_NOT_BEFORE: claim_not_before}
+
+        jwe = legacy_encrypt(claims, rsa_pub_key)
+
+        legacy_patch = mock.patch.object(
+            jose, 'legacy_decrypt', wraps=jose.legacy_decrypt
+        )
+        spec_patch = mock.patch.object(
+            jose, 'spec_compliant_decrypt', wraps=jose.spec_compliant_decrypt
+        )
+        with legacy_patch as legacy_mock, spec_patch as spec_mock:
+            with self.assertRaises(jose.NotYetValid) as not_valid_error:
+                jose.decrypt(jwe, rsa_priv_key)
+
+        self.assertEqual(legacy_mock.call_count, 1)
+        self.assertEqual(spec_mock.call_count, 0)
+
+        self.assertEqual(
+            not_valid_error.exception.message,
+            'Token not valid until {}'.format(
+                jose._format_timestamp(claim_not_before)
+            )
+        )
 
 
 class TestUtils(unittest.TestCase):
