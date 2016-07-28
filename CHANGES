@@ -1,6 +1,11 @@
 CHANGES
 =======
 
+1.1.1 (2016-07-28)
+------------------
+- Fixed handling of expiration exceptions during selection of decryption method
+  (patch contributed by yuriikonovaliuk)
+
 1.1.0 (2016-03-03)
 ------------------
 - Allowed to decrypt JWE compliant tokens (patch contributed by
