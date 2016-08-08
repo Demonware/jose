@@ -564,7 +564,8 @@ def encrypt_oaep(plaintext, jwk):
 
 def decrypt_oaep(ciphertext, jwk):
     try:
-        return PKCS1_OAEP.new(RSA.importKey(jwk['k'])).decrypt(ciphertext)
+        passphrase = jwk['passphrase'] if 'passphrase' in jwk else None
+        return PKCS1_OAEP.new(RSA.importKey(jwk['k'], passphrase)).decrypt(ciphertext)
     except ValueError as e:
         raise Error(e.args[0])
 
