@@ -1,6 +1,3 @@
-#This modified version supports encrypted private keys (passphrase)
-#I already submitted a pull request: https://github.com/Demonware/jose/pull/23
-
 import logging
 logger = logging.getLogger(__name__)
 
