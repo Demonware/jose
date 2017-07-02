@@ -226,20 +226,20 @@ References
 
 .. [#f2] JWT: JSON Web Tokens
 
-    https://tools.ietf.org/html/draft-ietf-oauth-json-web-token
+    https://tools.ietf.org/html/rfc7519
 
 .. [#f3] JWS: JSON Web Signing
 
-    http://tools.ietf.org/html/draft-ietf-jose-json-web-signature
+    https://tools.ietf.org/html/rfc7515
 
 .. [#f4] JWE: JSON Web Encryption
 
-    http://tools.ietf.org/html/draft-ietf-jose-json-web-encryption
+    https://tools.ietf.org/html/rfc7516
 
 .. [#f5] JWT Authorization Grants
 
-    http://tools.ietf.org/html/draft-ietf-oauth-jwt-bearer
+    https://tools.ietf.org/html/rfc7523
 
 .. [#f6] JWK: JSON Web Keys
 
-    http://tools.ietf.org/html/draft-ietf-jose-json-web-key
+    https://tools.ietf.org/html/rfc7517
