@@ -6,14 +6,14 @@ from setuptools.command.bdist_rpm import bdist_rpm as _bdist_rpm
 
 here = os.path.abspath(os.path.dirname(__file__))
 REQUIRES = filter(lambda s: len(s) > 0,
-        open(os.path.join(here, 'requirements.txt')).read().split('\n'))
+        open(os.path.join(here, 'requirements.txt'), encoding='utf-8').read().split('\n'))
 TESTS_REQUIRE = ['mock']
 pkg_name = 'jose'
 pyver = ''.join(('python', '.'.join(map(str, sys.version_info[:2]))))
 
-README = open(os.path.join(here, 'README')).read()
-CHANGES = open(os.path.join(here, 'CHANGES')).read()
-CONTRIB = open(os.path.join(here, 'CONTRIB')).read()
+README = open(os.path.join(here, 'README'), encoding='utf-8').read()
+CHANGES = open(os.path.join(here, 'CHANGES'), encoding='utf-8').read()
+CONTRIB = open(os.path.join(here, 'CONTRIB'), encoding='utf-8').read()
 
 
 class bdist_rpm(_bdist_rpm):
