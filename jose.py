@@ -770,7 +770,7 @@ def _jws_hash_str(header, claims):
 
 
 def cli_decrypt(jwt, key):
-    print decrypt(deserialize_compact(jwt), {'k':key},
+    return decrypt(deserialize_compact(jwt), {'k':key},
         validate_claims=False)
 
 
