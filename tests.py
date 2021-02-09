@@ -169,7 +169,7 @@ class TestJWE(unittest.TestCase):
             jwt = jose.legacy_decrypt(jose.deserialize_compact(et), rsa_priv_key,
                     adata=adata)
 
-            # make sure signaures don't match when adata isn't passed in
+            # make sure signatures don't match when adata isn't passed in
             try:
                 hdr, dt = jose.legacy_decrypt(jose.deserialize_compact(et),
                     rsa_priv_key)

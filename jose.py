@@ -644,7 +644,7 @@ class _JWA(object):
 
     def __getitem__(self, key):
         """ Derive implementation(s) from key
-        If key is compond <encryption>(-|+)<hash> then it will return a tuple
+        If key is compound <encryption>(-|+)<hash> then it will return a tuple
         of implementations.
         Each implementation is a tuple in following format:
         - for hash algorithms ((<sign function>, <verify function>), <mod>)
