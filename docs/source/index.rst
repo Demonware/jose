@@ -4,7 +4,7 @@
    contain the root `toctree` directive.
 
 
-Javascript Object Signing and Encryption (JOSE)
+JSON Object Signing and Encryption (JOSE)
 ===============================================
 
 .. contents::
